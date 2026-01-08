@@ -426,8 +426,8 @@ class TradingMonitor:
         self.client = None
         self.config = {}
 
-        # Data caches
-        self.spread_cache = deque(maxlen=2000)
+        # Data caches (10000 supports up to 166 min at 60 pts/min)
+        self.spread_cache = deque(maxlen=10000)
         self.zscore_history = deque(maxlen=200)
         self.price_history = deque(maxlen=200)
 

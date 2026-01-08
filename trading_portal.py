@@ -2424,10 +2424,11 @@ def get_data():
         # Connected if we have recent price data
         connected = data.get('spot_price') is not None
 
-    # Authenticated if account info has no error and has valid data
+    # Authenticated if account info has no error (API returned code 0)
     if account_info and not account_info.get('error'):
-        # Check if we got valid balance data (not just defaults)
-        if account_info.get('balance', 0) > 0 or account_info.get('equity', 0) > 0:
+        # Server field shows actual connection status
+        server = account_info.get('server', '')
+        if 'OKX' in server and 'Error' not in server:
             authenticated = True
 
     return jsonify({

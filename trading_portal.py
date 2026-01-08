@@ -1252,7 +1252,7 @@ MONITOR_TEMPLATE = '''
         .account-item .value { font-size: 1.3rem; font-weight: 600; }
         .account-item .value.negative { color: #e74c3c; }
         .account-item .value.positive { color: #27ae60; }
-        .chart-container { height: 400px; position: relative; width: 100%; }
+        .chart-container { height: 300px; position: relative; width: 100%; }
         .asset-panel { padding: 15px; }
         .asset-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
         .asset-name { font-size: 24px; font-weight: 700; }

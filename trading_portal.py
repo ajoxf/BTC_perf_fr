@@ -2094,16 +2094,18 @@ SETTINGS_TEMPLATE = '''
                             <option value="days" {{ 'selected' if config.lookback_unit == 'days' }}>Days</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Points/Minute</label>
-                        <select name="points_per_minute">
-                            <option value="1" {{ 'selected' if config.points_per_minute == 1 }}>1 (1 per minute)</option>
-                            <option value="6" {{ 'selected' if config.points_per_minute == 6 }}>6 (every 10 sec)</option>
-                            <option value="12" {{ 'selected' if config.points_per_minute == 12 }}>12 (every 5 sec)</option>
-                            <option value="30" {{ 'selected' if config.points_per_minute == 30 }}>30 (every 2 sec)</option>
-                            <option value="60" {{ 'selected' if config.points_per_minute == 60 }}>60 (every 1 sec)</option>
+                </div>
+                <div class="row" style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+                    <div class="form-group" style="flex: 2;">
+                        <label style="font-weight: bold; color: #2c3e50;">📊 Data Resolution (Points Per Minute)</label>
+                        <select name="points_per_minute" style="font-size: 16px;">
+                            <option value="1" {{ 'selected' if config.points_per_minute == 1 }}>1 point/min — Uses 1-min candles (90 points for 90 min)</option>
+                            <option value="6" {{ 'selected' if config.points_per_minute == 6 }}>6 points/min — Every 10 sec (540 points for 90 min)</option>
+                            <option value="12" {{ 'selected' if config.points_per_minute == 12 }}>12 points/min — Every 5 sec (1,080 points for 90 min)</option>
+                            <option value="30" {{ 'selected' if config.points_per_minute == 30 }}>30 points/min — Every 2 sec (2,700 points for 90 min)</option>
+                            <option value="60" {{ 'selected' if config.points_per_minute == 60 }}>60 points/min — Every 1 sec (5,400 points for 90 min)</option>
                         </select>
-                        <small style="color:#888;">90min × 60pts/min = 5400 points</small>
+                        <small style="color:#e74c3c; display:block; margin-top:8px;">⚠️ Higher resolution = more accurate but requires collecting data in real-time (OKX only provides 1-min candles)</small>
                     </div>
                 </div>
                 <div class="row">

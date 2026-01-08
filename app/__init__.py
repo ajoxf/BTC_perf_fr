@@ -24,9 +24,16 @@ def create_app(config_path: str = None) -> Flask:
     else:
         config = {}
 
+    # Ensure required directories exist
+    db_path = config.get('database', {}).get('path', 'instance/trading.db')
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+    os.makedirs('logs', exist_ok=True)
+
     # Flask config
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{config.get('database', {}).get('path', 'instance/trading.db')}"
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Store trading config

@@ -98,16 +98,11 @@
     </div>
 </div>
 
-<!-- Row 2: Selected Futures Contract -->
+<!-- Row 2: Most Liquid Futures Contract -->
 <div class="row mb-3">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Selected Futures Contract</span>
-                <select class="form-select form-select-sm" style="width: auto;" id="futures-selector" onchange="selectFutures(this.value)">
-                    <option value="">Loading...</option>
-                </select>
-            </div>
+            <div class="card-header">Most Liquid Futures Contract <span class="text-muted small">(auto-selected by 24h volume)</span></div>
             <div class="card-body p-0">
                 <table class="table table-sm mb-0">
                     <thead>
@@ -427,57 +422,43 @@
 
     function updateFuturesTable(futures) {
         const tbody = document.getElementById('futures-table');
-        const selector = document.getElementById('futures-selector');
 
         if (!futures || futures.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No futures contracts available</td></tr>';
             return;
         }
 
-        // Sort by expiry
-        futures.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+        // Futures are already sorted by volume (most liquid first)
+        // Auto-select most liquid contract (first one)
+        const mostLiquid = futures[0];
+        selectedFutures = mostLiquid.instrument;
 
-        // Auto-select first futures if none selected
-        if (!selectedFutures && futures.length > 0) {
-            selectedFutures = futures[0].instrument;
-        }
+        const price = mostLiquid.price || 0;
+        const spread = price - spotPrice;
+        const spreadPct = spotPrice > 0 ? (spread / spotPrice) : 0;
+        const days = daysUntil(mostLiquid.expiry);
+        const annualized = days > 0 ? (spreadPct / days * 365 * 100).toFixed(2) : '--';
 
-        // Update dropdown selector
-        selector.innerHTML = futures.map(f => {
-            const days = daysUntil(f.expiry);
-            return `<option value="${f.instrument}" ${f.instrument === selectedFutures ? 'selected' : ''}>${f.instrument} (${days}d)</option>`;
-        }).join('');
+        let rowClass = '';
+        if (days <= 3) rowClass = 'expiry-danger';
+        else if (days <= 7) rowClass = 'expiry-warning';
 
-        // Find and display only the selected contract
-        const selected = futures.find(f => f.instrument === selectedFutures) || futures[0];
-        if (selected) {
-            const price = selected.price || 0;
-            const spread = price - spotPrice;
-            const spreadPct = spotPrice > 0 ? (spread / spotPrice) : 0;
-            const days = daysUntil(selected.expiry);
-            const annualized = days > 0 ? (spreadPct / days * 365 * 100).toFixed(2) : '--';
+        selectedFuturesData = mostLiquid;
+        updateSelectedFutures(mostLiquid, spread, spreadPct);
 
-            let rowClass = '';
-            if (days <= 3) rowClass = 'expiry-danger';
-            else if (days <= 7) rowClass = 'expiry-warning';
-
-            selectedFuturesData = selected;
-            updateSelectedFutures(selected, spread, spreadPct);
-
-            tbody.innerHTML = `
-                <tr class="${rowClass}">
-                    <td><strong>${selected.instrument}</strong></td>
-                    <td>${formatPrice(price)}</td>
-                    <td class="text-success">${formatPrice(selected.bid || 0)}</td>
-                    <td class="text-danger">${formatPrice(selected.ask || 0)}</td>
-                    <td>${formatSpread(spread)}</td>
-                    <td>${formatBasisPercent(spreadPct)}</td>
-                    <td>${new Date(selected.expiry).toLocaleDateString()}</td>
-                    <td class="${days <= 3 ? 'text-danger fw-bold' : days <= 7 ? 'text-warning' : ''}">${days}d</td>
-                    <td>${annualized}%</td>
-                </tr>
-            `;
-        }
+        tbody.innerHTML = `
+            <tr class="${rowClass}">
+                <td><strong>${mostLiquid.instrument}</strong></td>
+                <td>${formatPrice(price)}</td>
+                <td class="text-success">${formatPrice(mostLiquid.bid || 0)}</td>
+                <td class="text-danger">${formatPrice(mostLiquid.ask || 0)}</td>
+                <td>${formatSpread(spread)}</td>
+                <td>${formatBasisPercent(spreadPct)}</td>
+                <td>${new Date(mostLiquid.expiry).toLocaleDateString()}</td>
+                <td class="${days <= 3 ? 'text-danger fw-bold' : days <= 7 ? 'text-warning' : ''}">${days}d</td>
+                <td>${annualized}%</td>
+            </tr>
+        `;
     }
 
     function updateSelectedFutures(f, spread, spreadPct) {

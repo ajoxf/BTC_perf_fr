@@ -70,7 +70,7 @@ class OKXClient:
         self.api_key = api_key or os.environ.get('OKX_API_KEY', '')
         self.secret_key = secret_key or os.environ.get('OKX_SECRET_KEY', '')
         self.passphrase = passphrase or os.environ.get('OKX_PASSPHRASE', '')
-        self.demo_trading = demo_trading
+        self._demo_trading = demo_trading
         self.rate_limiter = RateLimiter(requests_per_second=10)
 
         self._session = requests.Session()
@@ -78,6 +78,16 @@ class OKXClient:
             'Content-Type': 'application/json',
             'x-simulated-trading': '1' if demo_trading else '0'
         })
+
+    @property
+    def demo_trading(self) -> bool:
+        return self._demo_trading
+
+    @demo_trading.setter
+    def demo_trading(self, value: bool):
+        """Update demo trading mode and refresh headers"""
+        self._demo_trading = value
+        self._session.headers['x-simulated-trading'] = '1' if value else '0'
 
     def _get_timestamp(self) -> str:
         """Get ISO timestamp for request signing"""

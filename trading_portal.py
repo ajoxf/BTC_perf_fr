@@ -1211,19 +1211,34 @@ class TradingMonitor:
             balance_response = self.client.get_balance('USDT')
             logger.info(f"Balance API response code: {balance_response.get('code')} msg: {balance_response.get('msg', 'none')}")
 
-            if balance_response.get('code') == '0' and balance_response.get('data'):
-                for bal in balance_response['data']:
+            if balance_response.get('code') == '0':
+                # API call succeeded - we're authenticated!
+                balance = 0
+                equity = 0
+                margin = 0
+                free_margin = 0
+
+                # Try to find USDT balance
+                for bal in balance_response.get('data', []):
                     details = bal.get('details', [])
                     for detail in details:
                         if detail.get('ccy') == 'USDT':
-                            return {
-                                'balance': float(detail.get('cashBal', 0)),
-                                'equity': float(detail.get('eq', 0)),
-                                'margin': float(detail.get('frozenBal', 0)),
-                                'free_margin': float(detail.get('availBal', 0)),
-                                'leverage': 1,  # OKX reports per-position
-                                'server': 'OKX Demo' if self.config.get('paper_mode') else 'OKX Live'
-                            }
+                            balance = float(detail.get('cashBal', 0))
+                            equity = float(detail.get('eq', 0))
+                            margin = float(detail.get('frozenBal', 0))
+                            free_margin = float(detail.get('availBal', 0))
+                            break
+
+                return {
+                    'balance': balance,
+                    'equity': equity,
+                    'margin': margin,
+                    'free_margin': free_margin,
+                    'leverage': 1,
+                    'server': 'OKX Demo' if self.config.get('paper_mode') else 'OKX Live'
+                    # No 'error' key = authenticated!
+                }
+
             # API returned error - check code
             error_code = balance_response.get('code', '')
             if error_code == '50111':

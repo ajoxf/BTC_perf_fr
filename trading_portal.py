@@ -1418,6 +1418,9 @@ MONITOR_TEMPLATE = '''
                             <span>Basis (F-S)</span>
                             <span class="basis-value" id="basis-value">$0.00</span>
                         </div>
+                        <div style="font-size: 14px; margin-bottom: 5px;">
+                            <strong>Contract:</strong> <span id="futures-contract" style="color: #3498db; font-weight: 600;">--</span>
+                        </div>
                         <div style="font-size: 14px;">Days to Expiry: <span id="days-expiry">--</span></div>
                     </div>
                 </div>
@@ -1681,6 +1684,7 @@ MONITOR_TEMPLATE = '''
                         document.getElementById('spot-spread').textContent = '$' + (d.spot_spread || 0).toFixed(2);
                         document.getElementById('futures-spread').textContent = '$' + (d.futures_spread || 0).toFixed(2);
                         document.getElementById('basis-value').textContent = (d.spread || 0).toFixed(2);
+                        document.getElementById('futures-contract').textContent = d.futures_symbol || '--';
                         document.getElementById('days-expiry').textContent = d.days_to_expiry || '--';
 
                         // Z-Score

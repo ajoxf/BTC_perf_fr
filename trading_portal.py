@@ -1335,8 +1335,10 @@ MONITOR_TEMPLATE = '''
         .session-icon { margin-right: 5px; }
         .connection-status { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
         .connection-status .light { width: 10px; height: 10px; border-radius: 50%; }
-        .connection-connected { background: #d4edda; color: #155724; }
-        .connection-connected .light { background: #28a745; box-shadow: 0 0 6px #28a745; }
+        .connection-full { background: #d4edda; color: #155724; }
+        .connection-full .light { background: #28a745; box-shadow: 0 0 6px #28a745; }
+        .connection-partial { background: #fff3cd; color: #856404; }
+        .connection-partial .light { background: #ffc107; box-shadow: 0 0 6px #ffc107; }
         .connection-disconnected { background: #f8d7da; color: #721c24; }
         .connection-disconnected .light { background: #dc3545; box-shadow: 0 0 6px #dc3545; }
         .btn { padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
@@ -1764,13 +1766,19 @@ MONITOR_TEMPLATE = '''
                         document.getElementById('session-name').textContent = data.market_session;
                     }
 
-                    // Update connection status
+                    // Update connection status (3 states: full, partial, disconnected)
                     const connIndicator = document.getElementById('connection-indicator');
                     const connText = document.getElementById('connection-text');
-                    if (data.connected) {
-                        connIndicator.className = 'connection-status connection-connected';
+                    if (data.connected && data.authenticated) {
+                        // Full connection - prices + authenticated for trading
+                        connIndicator.className = 'connection-status connection-full';
                         connText.textContent = 'CONNECTED';
+                    } else if (data.connected) {
+                        // Partial - prices only, not authenticated
+                        connIndicator.className = 'connection-status connection-partial';
+                        connText.textContent = 'NO AUTH';
                     } else {
+                        // Disconnected - no price data
                         connIndicator.className = 'connection-status connection-disconnected';
                         connText.textContent = 'DISCONNECTED';
                     }
@@ -2400,15 +2408,24 @@ def get_data():
     data = monitor.current_data
     config = db.get_config()
 
-    # Check connection status
+    # Check connection and authentication status
     connected = False
+    authenticated = False
+    account_info = monitor.get_account_info()
+
     if monitor.client and data:
         # Connected if we have recent price data
         connected = data.get('spot_price') is not None
 
+    # Authenticated if account info has no error and has valid data
+    if account_info and not account_info.get('error'):
+        # Check if we got valid balance data (not just defaults)
+        if account_info.get('balance', 0) > 0 or account_info.get('equity', 0) > 0:
+            authenticated = True
+
     return jsonify({
         'data': data,
-        'account': monitor.get_account_info(),
+        'account': account_info,
         'okx_positions': monitor.get_okx_positions(),
         'positions': monitor.get_enriched_positions(),
         'algo_positions': monitor.get_enriched_positions(),  # Algorithm-managed positions
@@ -2418,7 +2435,8 @@ def get_data():
         'trade_summary': db.get_trade_summary(),
         'config': config,
         'market_session': data.get('session', 'Unknown') if data else 'Unknown',
-        'connected': connected
+        'connected': connected,
+        'authenticated': authenticated
     })
 
 

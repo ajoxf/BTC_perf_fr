@@ -1539,22 +1539,24 @@ MONITOR_TEMPLATE = '''
                         <span class="asset-name" id="asset-name">BTC</span>
                         <span class="sentiment" id="sentiment">FAIR</span>
                     </div>
-                    <div class="price-grid">
+                    <div class="price-grid" style="grid-template-columns: repeat(2, 1fr);">
                         <div class="price-item">
-                            <label>SPOT</label>
+                            <label>SPOT (Mid)</label>
                             <div class="value" id="spot-price">0.00</div>
+                            <div style="font-size: 11px; color: #888; margin-top: 2px;">
+                                <span style="color: #27ae60;" id="spot-bid">0.00</span> /
+                                <span style="color: #e74c3c;" id="spot-ask">0.00</span>
+                                <span style="color: #666;"> (Δ<span id="spot-spread">0.00</span>)</span>
+                            </div>
                         </div>
                         <div class="price-item">
-                            <label id="futures-label">FUTURES</label>
+                            <label id="futures-label">FUTURES (Mid)</label>
                             <div class="value" id="futures-price">0.00</div>
-                        </div>
-                        <div class="price-item">
-                            <label>SPOT SPREAD</label>
-                            <div class="value" id="spot-spread">$0.00</div>
-                        </div>
-                        <div class="price-item">
-                            <label>FUT SPREAD</label>
-                            <div class="value" id="futures-spread">$0.00</div>
+                            <div style="font-size: 11px; color: #888; margin-top: 2px;">
+                                <span style="color: #27ae60;" id="futures-bid">0.00</span> /
+                                <span style="color: #e74c3c;" id="futures-ask">0.00</span>
+                                <span style="color: #666;"> (Δ<span id="futures-spread">0.00</span>)</span>
+                            </div>
                         </div>
                     </div>
                     <div class="basis-section">
@@ -1842,8 +1844,17 @@ MONITOR_TEMPLATE = '''
                         document.getElementById('asset-name').textContent = d.asset || 'BTC';
                         document.getElementById('spot-price').textContent = (d.spot_price || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('futures-price').textContent = (d.futures_price || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+
+                        // Spot bid/ask/spread
+                        document.getElementById('spot-bid').textContent = (d.spot_bid || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                        document.getElementById('spot-ask').textContent = (d.spot_ask || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('spot-spread').textContent = '$' + (d.spot_spread || 0).toFixed(2);
+
+                        // Futures bid/ask/spread
+                        document.getElementById('futures-bid').textContent = (d.futures_bid || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
+                        document.getElementById('futures-ask').textContent = (d.futures_ask || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('futures-spread').textContent = '$' + (d.futures_spread || 0).toFixed(2);
+
                         document.getElementById('basis-value').textContent = (d.spread || 0).toFixed(2);
 
                         // Show contract name in futures label and contract section

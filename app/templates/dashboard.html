@@ -13,9 +13,11 @@
                     <div class="col-md-3 text-center border-end">
                         <div class="metric-label">BTC Spot</div>
                         <div class="metric-value-lg" id="spot-price">--</div>
+                        <div class="bid-ask mt-1">
+                            <span class="bid-ask-label">Bid:</span><span class="text-success" id="spot-bid">--</span>
+                        </div>
                         <div class="bid-ask">
-                            <span class="text-success" id="spot-bid">--</span> /
-                            <span class="text-danger" id="spot-ask">--</span>
+                            <span class="bid-ask-label">Ask:</span><span class="text-danger" id="spot-ask">--</span>
                         </div>
                         <div class="spread-info">Spread: <span id="spot-spread">--</span></div>
                     </div>
@@ -23,32 +25,41 @@
                         <div class="metric-label">Selected Futures</div>
                         <div class="metric-value-lg" id="futures-price">--</div>
                         <div class="contract-name" id="futures-contract">--</div>
+                        <div class="bid-ask mt-1">
+                            <span class="bid-ask-label">Bid:</span><span class="text-success" id="futures-bid">--</span>
+                        </div>
                         <div class="bid-ask">
-                            <span class="text-success" id="futures-bid">--</span> /
-                            <span class="text-danger" id="futures-ask">--</span>
+                            <span class="bid-ask-label">Ask:</span><span class="text-danger" id="futures-ask">--</span>
                         </div>
                     </div>
                     <div class="col-md-3 text-center border-end">
                         <div class="metric-label">Basis Spread ($)</div>
                         <div class="metric-value-lg" id="spread-usd">--</div>
+                        <div class="metric-label mt-2">Basis Spread (%)</div>
+                        <div class="metric-value" id="spread-pct">--</div>
                     </div>
                     <div class="col-md-3 text-center">
-                        <div class="metric-label">Basis Spread (%)</div>
-                        <div class="metric-value-lg" id="spread-pct">--</div>
+                        <div class="metric-label">Annualized Return</div>
+                        <div class="metric-value-lg" id="annualized-return">--</div>
+                        <div class="spread-info">Days to Expiry: <span id="days-to-expiry">--</span></div>
                     </div>
                 </div>
                 <hr class="my-2">
                 <div class="row">
-                    <div class="col-md-4 text-center">
+                    <div class="col-md-3 text-center">
                         <div class="metric-label">Round-Trip Cost</div>
                         <div class="metric-value" id="trading-cost">0.20%</div>
                         <div class="small text-muted">(4 x 0.05% fee)</div>
                     </div>
-                    <div class="col-md-4 text-center">
+                    <div class="col-md-3 text-center">
                         <div class="metric-label">Net Profit if Converges</div>
                         <div class="metric-value" id="net-profit">--</div>
                     </div>
-                    <div class="col-md-4 text-center">
+                    <div class="col-md-3 text-center">
+                        <div class="metric-label">Net Annualized</div>
+                        <div class="metric-value" id="net-annualized">--</div>
+                    </div>
+                    <div class="col-md-3 text-center">
                         <div class="metric-label">Profitable?</div>
                         <div class="metric-value" id="is-profitable">--</div>
                     </div>
@@ -392,10 +403,26 @@
         document.getElementById('spread-usd').innerHTML = formatSpread(spread);
         document.getElementById('spread-pct').innerHTML = formatBasisPercent(spreadPct);
 
+        // Calculate days to expiry and annualized return
+        const days = daysUntil(f.expiry);
+        document.getElementById('days-to-expiry').textContent = days + 'd';
+
+        // Annualized return = (spread% / days) * 365
+        const annualizedPct = days > 0 ? (Math.abs(spreadPct) / days * 365) : 0;
+        const annualizedFormatted = (annualizedPct * 100).toFixed(2);
+        document.getElementById('annualized-return').innerHTML =
+            `<span class="${annualizedPct >= 0 ? 'text-success' : 'text-danger'}">${annualizedFormatted}%</span>`;
+
         // Calculate net profit after costs (0.2% round trip)
         const costPct = 0.002;
         const netProfitPct = Math.abs(spreadPct) - costPct;
         document.getElementById('net-profit').innerHTML = formatBasisPercent(netProfitPct);
+
+        // Net annualized = (net profit% / days) * 365
+        const netAnnualizedPct = days > 0 ? (netProfitPct / days * 365) : 0;
+        const netAnnualizedFormatted = (netAnnualizedPct * 100).toFixed(2);
+        document.getElementById('net-annualized').innerHTML =
+            `<span class="${netAnnualizedPct >= 0 ? 'text-success' : 'text-danger'}">${netAnnualizedFormatted}%</span>`;
 
         // Is it profitable?
         if (Math.abs(spreadPct) > costPct) {

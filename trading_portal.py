@@ -1190,6 +1190,12 @@ class TradingMonitor:
 
         # Check if credentials are configured
         api_key = os.environ.get('OKX_API_KEY', '')
+        secret_key = os.environ.get('OKX_SECRET_KEY', '')
+        passphrase = os.environ.get('OKX_PASSPHRASE', '')
+
+        # Debug: show what credentials are loaded (redacted)
+        logger.info(f"API Key: {api_key[:8]}... | Secret: {secret_key[:4]}...{secret_key[-4:] if len(secret_key) > 8 else ''} | Pass: {'*' * len(passphrase)} | Demo: {self.client.demo_trading if self.client else 'N/A'}")
+
         if not api_key or api_key == 'your_api_key_here':
             return {
                 'server': 'OKX Demo' if self.config.get('paper_mode') else 'OKX Live',
@@ -1203,6 +1209,7 @@ class TradingMonitor:
 
         try:
             balance_response = self.client.get_balance('USDT')
+            logger.info(f"Balance API response code: {balance_response.get('code')} msg: {balance_response.get('msg', 'none')}")
 
             if balance_response.get('code') == '0' and balance_response.get('data'):
                 for bal in balance_response['data']:

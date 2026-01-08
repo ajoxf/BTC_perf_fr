@@ -1050,6 +1050,21 @@ class TradingMonitor:
 
     def _open_position(self, signal: Dict, data: Dict):
         """Open a new position"""
+        # Check minimum balance before trading (safety check)
+        if not self.config.get('paper_mode'):
+            min_balance = self.config.get('min_balance_to_trade', 10)
+            account_info = self.get_account_info()
+            current_balance = account_info.get('free_margin', 0)
+
+            if current_balance < min_balance:
+                logger.warning(f"Order blocked: Balance ${current_balance:.2f} < minimum ${min_balance:.2f}")
+                return
+
+            # Check futures symbol is configured
+            if not self.config.get('futures_symbol'):
+                logger.warning("Order blocked: No futures symbol configured")
+                return
+
         asset_name = self.config.get('asset_name', 'BTC')
         direction = signal.get('action', '')
         lot_size = self.config.get('lot_size', 0.01)
@@ -1193,8 +1208,6 @@ class TradingMonitor:
         secret_key = os.environ.get('OKX_SECRET_KEY', '')
         passphrase = os.environ.get('OKX_PASSPHRASE', '')
 
-        # Debug: show what credentials are loaded (redacted)
-        logger.info(f"API Key: {api_key[:8]}... | Secret: {secret_key[:4]}...{secret_key[-4:] if len(secret_key) > 8 else ''} | Pass: {'*' * len(passphrase)} | Demo: {self.client.demo_trading if self.client else 'N/A'}")
 
         if not api_key or api_key == 'your_api_key_here':
             return {
@@ -1209,7 +1222,6 @@ class TradingMonitor:
 
         try:
             balance_response = self.client.get_balance('USDT')
-            logger.info(f"Balance API response code: {balance_response.get('code')} msg: {balance_response.get('msg', 'none')}")
 
             if balance_response.get('code') == '0':
                 # API call succeeded - we're authenticated!
@@ -2141,12 +2153,22 @@ SETTINGS_TEMPLATE = '''
                 </div>
                 <div class="row">
                     <div class="form-group">
-                        <label>Futures Symbol (leave empty for auto)</label>
-                        <input type="text" name="futures_symbol" value="{{ config.futures_symbol or '' }}">
+                        <label>Futures Contract</label>
+                        <select name="futures_symbol" id="futures-symbol-select">
+                            <option value="">-- Loading contracts... --</option>
+                        </select>
+                        <small style="color:#666;">Perpetual (SWAP) is most liquid</small>
                     </div>
                     <div class="form-group">
                         <label>Contract Size</label>
                         <input type="number" step="0.001" name="contract_size" value="{{ config.contract_size or 1 }}">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>Minimum Balance to Trade ($)</label>
+                        <input type="number" step="1" name="min_balance_to_trade" value="{{ config.min_balance_to_trade or 10 }}">
+                        <small style="color:#e74c3c;">Orders blocked if balance below this</small>
                     </div>
                 </div>
             </div>
@@ -2353,6 +2375,42 @@ SETTINGS_TEMPLATE = '''
             btn.disabled = false;
             btn.textContent = '🔌 Test Spot & Futures Orders';
         }
+
+        // Load futures contracts on page load
+        async function loadFuturesContracts() {
+            const select = document.getElementById('futures-symbol-select');
+            if (!select) return;
+
+            try {
+                const response = await fetch('/api/futures_contracts');
+                const data = await response.json();
+
+                select.innerHTML = '';
+
+                // Add empty option
+                const emptyOpt = document.createElement('option');
+                emptyOpt.value = '';
+                emptyOpt.textContent = '-- Select Contract --';
+                select.appendChild(emptyOpt);
+
+                // Add contracts
+                data.contracts.forEach(contract => {
+                    const opt = document.createElement('option');
+                    opt.value = contract.symbol;
+                    opt.textContent = contract.name;
+                    if (contract.symbol === data.current) {
+                        opt.selected = true;
+                    }
+                    select.appendChild(opt);
+                });
+
+            } catch (err) {
+                select.innerHTML = '<option value="">Error loading contracts</option>';
+            }
+        }
+
+        // Load on page ready
+        document.addEventListener('DOMContentLoaded', loadFuturesContracts);
     </script>
 </body>
 </html>
@@ -2408,7 +2466,7 @@ def settings():
 
         for key in ['contract_size', 'entry_std_dev', 'exit_std_dev', 'stop_loss_std_dev',
                     'time_stop_loss_days', 'lot_size', 'commission_per_lot', 'hurst_threshold',
-                    'min_profit_per_lot', 'max_loss_per_lot']:
+                    'min_profit_per_lot', 'max_loss_per_lot', 'min_balance_to_trade']:
             if key in request.form:
                 config[key] = float(request.form[key])
 
@@ -2440,10 +2498,8 @@ def get_data():
         connected = data.get('spot_price') is not None
 
     # Authenticated if account info has no error (API returned code 0)
-    if account_info:
-        logger.info(f"Auth check - error: {account_info.get('error')}, server: {account_info.get('server')}")
-        if not account_info.get('error'):
-            authenticated = True
+    if account_info and not account_info.get('error'):
+        authenticated = True
 
     return jsonify({
         'data': data,
@@ -2577,6 +2633,48 @@ def api_trades_csv():
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'}
     )
+
+
+@app.route('/api/futures_contracts')
+def api_futures_contracts():
+    """Get available futures contracts for dropdown"""
+    config = db.get_config()
+    current_symbol = config.get('futures_symbol', '')
+
+    contracts = []
+
+    # Always add perpetual swap first (most liquid)
+    contracts.append({
+        'symbol': 'BTC-USDT-SWAP',
+        'name': 'BTC-USDT Perpetual Swap (Most Liquid)',
+        'type': 'SWAP'
+    })
+
+    # Try to get quarterly futures from OKX
+    if monitor.client:
+        try:
+            futures = monitor.client.get_instruments('FUTURES', 'BTC-USDT')
+            if futures:
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                # Sort by expiry and get next 2 quarterly contracts
+                valid_futures = [f for f in futures if f.expiry_time and f.expiry_time > now]
+                valid_futures.sort(key=lambda x: x.expiry_time)
+
+                for f in valid_futures[:2]:
+                    days_to_expiry = (f.expiry_time - now).days
+                    contracts.append({
+                        'symbol': f.inst_id,
+                        'name': f'{f.inst_id} (Expires in {days_to_expiry} days)',
+                        'type': 'FUTURES'
+                    })
+        except Exception as e:
+            logger.warning(f"Could not fetch futures contracts: {e}")
+
+    return jsonify({
+        'contracts': contracts,
+        'current': current_symbol
+    })
 
 
 @app.route('/api/algo_positions')

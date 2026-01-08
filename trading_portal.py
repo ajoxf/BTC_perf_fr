@@ -2200,12 +2200,89 @@ SETTINGS_TEMPLATE = '''
                 </div>
             </div>
 
+            <div class="card">
+                <h2>🧪 Test Exchange Connection</h2>
+                <p style="color: #666; margin-bottom: 15px;">Test that orders can be placed and cancelled on OKX. This will place small limit orders far from market price, then immediately cancel them.</p>
+                <div class="row">
+                    <div class="form-group">
+                        <button type="button" id="test-orders-btn" class="btn btn-primary" onclick="testOrders()" style="background: #9b59b6;">
+                            🔌 Test Spot & Futures Orders
+                        </button>
+                    </div>
+                </div>
+                <div id="test-results" style="margin-top: 15px; padding: 15px; border-radius: 6px; display: none;">
+                    <div id="test-output" style="font-family: monospace; white-space: pre-wrap;"></div>
+                </div>
+            </div>
+
             <div class="actions">
                 <button type="submit" class="btn btn-primary">Save Settings</button>
                 <a href="/" class="btn btn-secondary">Cancel</a>
             </div>
         </form>
     </div>
+
+    <script>
+        async function testOrders() {
+            const btn = document.getElementById('test-orders-btn');
+            const results = document.getElementById('test-results');
+            const output = document.getElementById('test-output');
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Testing...';
+            results.style.display = 'block';
+            results.style.background = '#f8f9fa';
+            output.textContent = 'Connecting to OKX...\\n';
+
+            try {
+                const response = await fetch('/api/test_orders', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    results.style.background = '#d4edda';
+                    output.textContent = '✅ TEST PASSED\\n\\n';
+                } else {
+                    results.style.background = '#f8d7da';
+                    output.textContent = '❌ TEST FAILED\\n\\n';
+                }
+
+                // Spot results
+                output.textContent += '━━━ SPOT ORDER TEST ━━━\\n';
+                if (data.spot) {
+                    output.textContent += `Symbol: ${data.spot.symbol}\\n`;
+                    output.textContent += `Place: ${data.spot.place_success ? '✅ OK' : '❌ FAILED'} ${data.spot.place_msg || ''}\\n`;
+                    output.textContent += `Cancel: ${data.spot.cancel_success ? '✅ OK' : '❌ FAILED'} ${data.spot.cancel_msg || ''}\\n`;
+                    if (data.spot.order_id) output.textContent += `Order ID: ${data.spot.order_id}\\n`;
+                } else {
+                    output.textContent += `Error: ${data.spot_error || 'Unknown error'}\\n`;
+                }
+
+                output.textContent += '\\n━━━ FUTURES ORDER TEST ━━━\\n';
+                if (data.futures) {
+                    output.textContent += `Symbol: ${data.futures.symbol}\\n`;
+                    output.textContent += `Place: ${data.futures.place_success ? '✅ OK' : '❌ FAILED'} ${data.futures.place_msg || ''}\\n`;
+                    output.textContent += `Cancel: ${data.futures.cancel_success ? '✅ OK' : '❌ FAILED'} ${data.futures.cancel_msg || ''}\\n`;
+                    if (data.futures.order_id) output.textContent += `Order ID: ${data.futures.order_id}\\n`;
+                } else {
+                    output.textContent += `Error: ${data.futures_error || 'Unknown error'}\\n`;
+                }
+
+                if (data.message) {
+                    output.textContent += `\\n${data.message}\\n`;
+                }
+
+            } catch (err) {
+                results.style.background = '#f8d7da';
+                output.textContent = `❌ Error: ${err.message}`;
+            }
+
+            btn.disabled = false;
+            btn.textContent = '🔌 Test Spot & Futures Orders';
+        }
+    </script>
 </body>
 </html>
 '''
@@ -2420,6 +2497,164 @@ def api_algo_positions():
     return jsonify({
         'positions': monitor.get_enriched_positions()
     })
+
+
+@app.route('/api/test_orders', methods=['POST'])
+def api_test_orders():
+    """Test order placement and cancellation on spot and futures"""
+    import time
+
+    if not monitor.client:
+        return jsonify({'success': False, 'message': 'OKX client not initialized'})
+
+    config = db.get_config()
+    spot_symbol = config.get('spot_symbol', 'BTC-USDT')
+    futures_symbol = config.get('futures_symbol', '')
+
+    results = {
+        'success': False,
+        'spot': None,
+        'futures': None,
+        'spot_error': None,
+        'futures_error': None
+    }
+
+    # Get current market price to set limit orders far away
+    try:
+        spot_ticker = monitor.client.get_ticker(spot_symbol)
+        spot_price = spot_ticker.last_price if spot_ticker else 50000
+    except:
+        spot_price = 50000
+
+    # Test price at 50% below market (will never fill)
+    test_price = round(spot_price * 0.5, 1)
+    test_size = 0.0001  # Minimum BTC size
+
+    # ===== TEST SPOT ORDER =====
+    spot_result = {
+        'symbol': spot_symbol,
+        'place_success': False,
+        'cancel_success': False,
+        'order_id': None,
+        'place_msg': '',
+        'cancel_msg': ''
+    }
+
+    try:
+        # Place spot limit buy order far below market
+        place_response = monitor.client.place_order(
+            inst_id=spot_symbol,
+            side='buy',
+            order_type='limit',
+            size=test_size,
+            price=test_price,
+            trade_mode='cash'
+        )
+
+        if place_response.get('code') == '0' and place_response.get('data'):
+            order_data = place_response['data'][0]
+            order_id = order_data.get('ordId')
+            spot_result['order_id'] = order_id
+            spot_result['place_success'] = True
+            spot_result['place_msg'] = f'(Price: ${test_price:,.0f})'
+
+            # Small delay before cancel
+            time.sleep(0.3)
+
+            # Cancel the order
+            cancel_response = monitor.client.cancel_order(
+                inst_id=spot_symbol,
+                order_id=order_id
+            )
+
+            if cancel_response.get('code') == '0':
+                spot_result['cancel_success'] = True
+            else:
+                spot_result['cancel_msg'] = cancel_response.get('msg', 'Cancel failed')
+        else:
+            error_msg = place_response.get('data', [{}])[0].get('sMsg', '') or place_response.get('msg', 'Unknown error')
+            spot_result['place_msg'] = error_msg
+
+    except Exception as e:
+        results['spot_error'] = str(e)
+
+    results['spot'] = spot_result
+
+    # ===== TEST FUTURES ORDER =====
+    if futures_symbol:
+        futures_result = {
+            'symbol': futures_symbol,
+            'place_success': False,
+            'cancel_success': False,
+            'order_id': None,
+            'place_msg': '',
+            'cancel_msg': ''
+        }
+
+        try:
+            # Get futures price
+            try:
+                fut_ticker = monitor.client.get_ticker(futures_symbol)
+                fut_price = fut_ticker.last_price if fut_ticker else spot_price
+            except:
+                fut_price = spot_price
+
+            fut_test_price = round(fut_price * 0.5, 1)
+
+            # Place futures limit buy order far below market
+            place_response = monitor.client.place_order(
+                inst_id=futures_symbol,
+                side='buy',
+                order_type='limit',
+                size=1,  # Futures use contracts, 1 contract
+                price=fut_test_price,
+                trade_mode='cross'
+            )
+
+            if place_response.get('code') == '0' and place_response.get('data'):
+                order_data = place_response['data'][0]
+                order_id = order_data.get('ordId')
+                futures_result['order_id'] = order_id
+                futures_result['place_success'] = True
+                futures_result['place_msg'] = f'(Price: ${fut_test_price:,.0f})'
+
+                # Small delay before cancel
+                time.sleep(0.3)
+
+                # Cancel the order
+                cancel_response = monitor.client.cancel_order(
+                    inst_id=futures_symbol,
+                    order_id=order_id
+                )
+
+                if cancel_response.get('code') == '0':
+                    futures_result['cancel_success'] = True
+                else:
+                    futures_result['cancel_msg'] = cancel_response.get('msg', 'Cancel failed')
+            else:
+                error_msg = place_response.get('data', [{}])[0].get('sMsg', '') or place_response.get('msg', 'Unknown error')
+                futures_result['place_msg'] = error_msg
+
+        except Exception as e:
+            results['futures_error'] = str(e)
+
+        results['futures'] = futures_result
+    else:
+        results['futures_error'] = 'No futures symbol configured'
+
+    # Overall success
+    spot_ok = results['spot'] and results['spot']['place_success'] and results['spot']['cancel_success']
+    futures_ok = results['futures'] and results['futures']['place_success'] and results['futures']['cancel_success']
+
+    # Success if spot works (futures is optional if not configured)
+    results['success'] = spot_ok and (futures_ok or not futures_symbol)
+
+    if results['success']:
+        results['message'] = 'All order tests passed! Exchange connection verified.'
+    else:
+        results['message'] = 'Some tests failed. Check API permissions and account balance.'
+
+    return jsonify(results)
 
 
 # ==================== MAIN ====================

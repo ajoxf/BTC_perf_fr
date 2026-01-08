@@ -144,7 +144,11 @@ def run_trading_engine(paper_mode: bool = True):
                     perp=market_data['perp_price'],
                     funding=market_data['funding_rate'],
                     predicted=market_data['predicted_rate'],
-                    futures=market_data['futures']
+                    futures=market_data['futures'],
+                    spot_bid=market_data.get('spot_bid', 0),
+                    spot_ask=market_data.get('spot_ask', 0),
+                    perp_bid=market_data.get('perp_bid', 0),
+                    perp_ask=market_data.get('perp_ask', 0)
                 )
 
                 if market_data['spot_price']:

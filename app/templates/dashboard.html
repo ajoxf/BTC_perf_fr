@@ -13,18 +13,27 @@
                     <div class="col-md-3 text-center border-end">
                         <div class="metric-label">BTC Spot</div>
                         <div class="metric-value-lg" id="spot-price">--</div>
+                        <div class="bid-ask">
+                            <span class="text-success" id="spot-bid">--</span> /
+                            <span class="text-danger" id="spot-ask">--</span>
+                        </div>
+                        <div class="spread-info">Spread: <span id="spot-spread">--</span></div>
                     </div>
                     <div class="col-md-3 text-center border-end">
                         <div class="metric-label">Selected Futures</div>
                         <div class="metric-value-lg" id="futures-price">--</div>
-                        <div class="small text-muted" id="futures-contract">--</div>
+                        <div class="contract-name" id="futures-contract">--</div>
+                        <div class="bid-ask">
+                            <span class="text-success" id="futures-bid">--</span> /
+                            <span class="text-danger" id="futures-ask">--</span>
+                        </div>
                     </div>
                     <div class="col-md-3 text-center border-end">
-                        <div class="metric-label">Spread ($)</div>
+                        <div class="metric-label">Basis Spread ($)</div>
                         <div class="metric-value-lg" id="spread-usd">--</div>
                     </div>
                     <div class="col-md-3 text-center">
-                        <div class="metric-label">Spread (%)</div>
+                        <div class="metric-label">Basis Spread (%)</div>
                         <div class="metric-value-lg" id="spread-pct">--</div>
                     </div>
                 </div>
@@ -55,6 +64,10 @@
                     <div class="col-6 mb-2">
                         <div class="metric-label">BTC Perp</div>
                         <div class="metric-value" id="perp-price">--</div>
+                        <div class="bid-ask small">
+                            <span class="text-success" id="perp-bid">--</span> /
+                            <span class="text-danger" id="perp-ask">--</span>
+                        </div>
                     </div>
                     <div class="col-6 mb-2">
                         <div class="metric-label">Funding Rate</div>
@@ -85,6 +98,8 @@
                         <tr>
                             <th>Contract</th>
                             <th>Price</th>
+                            <th>Bid</th>
+                            <th>Ask</th>
                             <th>Spread ($)</th>
                             <th>Spread (%)</th>
                             <th>Expiry Date</th>
@@ -94,7 +109,7 @@
                         </tr>
                     </thead>
                     <tbody id="futures-table">
-                        <tr><td colspan="8" class="text-center text-muted">Loading futures...</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted">Loading futures...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -232,6 +247,7 @@
 <script>
     let selectedFutures = null;
     let spotPrice = 0;
+    let selectedFuturesData = null;
 
     function updateDashboard() {
         // Fetch market data
@@ -241,8 +257,17 @@
                 spotPrice = data.spot?.price || 0;
                 document.getElementById('spot-price').textContent = formatPrice(spotPrice);
 
+                // Spot bid/ask
+                if (data.spot) {
+                    document.getElementById('spot-bid').textContent = formatPrice(data.spot.bid || 0);
+                    document.getElementById('spot-ask').textContent = formatPrice(data.spot.ask || 0);
+                    document.getElementById('spot-spread').textContent = '$' + (data.spot.spread || 0).toFixed(2);
+                }
+
                 if (data.perp) {
                     document.getElementById('perp-price').textContent = formatPrice(data.perp.price);
+                    document.getElementById('perp-bid').textContent = formatPrice(data.perp.bid || 0);
+                    document.getElementById('perp-ask').textContent = formatPrice(data.perp.ask || 0);
                     document.getElementById('funding-rate').textContent = formatPercent(data.perp.funding_rate);
                     document.getElementById('predicted-rate').textContent = formatPercent(data.perp.predicted_rate || 0);
                 }
@@ -305,12 +330,17 @@
         const tbody = document.getElementById('futures-table');
 
         if (!futures || futures.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No futures contracts available</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No futures contracts available</td></tr>';
             return;
         }
 
         // Sort by expiry
         futures.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+
+        // Auto-select first futures if none selected
+        if (!selectedFutures && futures.length > 0) {
+            selectedFutures = futures[0].instrument;
+        }
 
         tbody.innerHTML = futures.map(f => {
             const price = f.price || 0;
@@ -326,9 +356,9 @@
 
             const isSelected = selectedFutures === f.instrument;
 
-            // Update main display if this is selected (or select first by default)
-            if (isSelected || (!selectedFutures && futures.indexOf(f) === 0)) {
-                if (!selectedFutures) selectedFutures = f.instrument;
+            // Update main display if this is selected
+            if (isSelected) {
+                selectedFuturesData = f;
                 updateSelectedFutures(f, spread, spreadPct);
             }
 
@@ -336,6 +366,8 @@
                 <tr class="${rowClass}">
                     <td><strong>${f.instrument}</strong></td>
                     <td>${formatPrice(price)}</td>
+                    <td class="text-success">${formatPrice(f.bid || 0)}</td>
+                    <td class="text-danger">${formatPrice(f.ask || 0)}</td>
                     <td>${formatSpread(spread)}</td>
                     <td>${formatBasisPercent(spreadPct)}</td>
                     <td>${new Date(f.expiry).toLocaleDateString()}</td>
@@ -355,6 +387,8 @@
     function updateSelectedFutures(f, spread, spreadPct) {
         document.getElementById('futures-price').textContent = formatPrice(f.price);
         document.getElementById('futures-contract').textContent = f.instrument;
+        document.getElementById('futures-bid').textContent = formatPrice(f.bid || 0);
+        document.getElementById('futures-ask').textContent = formatPrice(f.ask || 0);
         document.getElementById('spread-usd').innerHTML = formatSpread(spread);
         document.getElementById('spread-pct').innerHTML = formatBasisPercent(spreadPct);
 
@@ -373,6 +407,7 @@
 
     function selectFutures(instrument) {
         selectedFutures = instrument;
+        // Force immediate update
         updateDashboard();
     }
 

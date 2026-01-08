@@ -234,15 +234,18 @@ class DataCollector:
         Returns:
             Dictionary with spot, perp, and futures data
         """
-        spot_price = self.store.get_price(self.spot_instrument)
-        perp_price = self.store.get_price(self.perp_instrument)
+        spot_ticker = self.store.get_ticker(self.spot_instrument)
+        perp_ticker = self.store.get_ticker(self.perp_instrument)
         funding = self.store.get_funding_rate(self.perp_instrument)
 
-        # Get futures data
+        spot_price = spot_ticker.last_price if spot_ticker else 0
+        perp_price = perp_ticker.last_price if perp_ticker else 0
+
+        # Get futures data with bid/ask
         futures_data = []
         for fut_inst in self._futures_instruments:
-            price = self.store.get_price(fut_inst)
-            if price:
+            fut_ticker = self.store.get_ticker(fut_inst)
+            if fut_ticker and fut_ticker.last_price:
                 # Parse expiry from instrument ID (e.g., BTC-USDT-240329)
                 parts = fut_inst.split('-')
                 if len(parts) >= 3:
@@ -253,16 +256,22 @@ class DataCollector:
                         expiry = expiry.replace(hour=8, tzinfo=timezone.utc)  # OKX settles at 08:00 UTC
 
                         futures_data.append({
-                            'inst_id': fut_inst,
-                            'price': price,
-                            'expiry': expiry
+                            'instrument': fut_inst,
+                            'price': fut_ticker.last_price,
+                            'bid': fut_ticker.bid_price,
+                            'ask': fut_ticker.ask_price,
+                            'expiry': expiry.isoformat()
                         })
                     except ValueError:
                         pass
 
         return {
             'spot_price': spot_price,
+            'spot_bid': spot_ticker.bid_price if spot_ticker else 0,
+            'spot_ask': spot_ticker.ask_price if spot_ticker else 0,
             'perp_price': perp_price,
+            'perp_bid': perp_ticker.bid_price if perp_ticker else 0,
+            'perp_ask': perp_ticker.ask_price if perp_ticker else 0,
             'funding_rate': funding.funding_rate if funding else 0,
             'predicted_rate': funding.next_funding_rate if funding else None,
             'funding_time': funding.funding_time if funding else None,

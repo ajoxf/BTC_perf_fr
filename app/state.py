@@ -29,7 +29,11 @@ class TradingState:
 
         # Market data
         self._spot_price = 0.0
+        self._spot_bid = 0.0
+        self._spot_ask = 0.0
         self._perp_price = 0.0
+        self._perp_bid = 0.0
+        self._perp_ask = 0.0
         self._funding_rate = 0.0
         self._predicted_rate = 0.0
         self._futures = []
@@ -58,11 +62,17 @@ class TradingState:
         self._last_update = datetime.utcnow()
 
     def update_market_data(self, spot: float, perp: float, funding: float,
-                           predicted: float = None, futures: list = None):
+                           predicted: float = None, futures: list = None,
+                           spot_bid: float = 0, spot_ask: float = 0,
+                           perp_bid: float = 0, perp_ask: float = 0):
         """Update market data from collector"""
         with self._data_lock:
             self._spot_price = spot or 0.0
+            self._spot_bid = spot_bid or 0.0
+            self._spot_ask = spot_ask or 0.0
             self._perp_price = perp or 0.0
+            self._perp_bid = perp_bid or 0.0
+            self._perp_ask = perp_ask or 0.0
             self._funding_rate = funding or 0.0
             self._predicted_rate = predicted or 0.0
             self._futures = futures or []
@@ -142,15 +152,23 @@ class TradingState:
     def get_market_data(self) -> Dict[str, Any]:
         """Get current market data for API"""
         with self._data_lock:
+            spot_spread = self._spot_ask - self._spot_bid if self._spot_ask and self._spot_bid else 0
+            perp_spread = self._perp_ask - self._perp_bid if self._perp_ask and self._perp_bid else 0
             return {
                 'spot': {
                     'instrument': 'BTC-USDT',
                     'price': self._spot_price,
+                    'bid': self._spot_bid,
+                    'ask': self._spot_ask,
+                    'spread': spot_spread,
                     'timestamp': self._last_update.isoformat()
                 },
                 'perp': {
                     'instrument': 'BTC-USDT-SWAP',
                     'price': self._perp_price,
+                    'bid': self._perp_bid,
+                    'ask': self._perp_ask,
+                    'spread': perp_spread,
                     'funding_rate': self._funding_rate,
                     'predicted_rate': self._predicted_rate,
                     'timestamp': self._last_update.isoformat()

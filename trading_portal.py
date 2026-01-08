@@ -1401,7 +1401,7 @@ MONITOR_TEMPLATE = '''
                             <div class="value" id="spot-price">0.00</div>
                         </div>
                         <div class="price-item">
-                            <label>FUTURES</label>
+                            <label id="futures-label">FUTURES</label>
                             <div class="value" id="futures-price">0.00</div>
                         </div>
                         <div class="price-item">
@@ -1684,7 +1684,11 @@ MONITOR_TEMPLATE = '''
                         document.getElementById('spot-spread').textContent = '$' + (d.spot_spread || 0).toFixed(2);
                         document.getElementById('futures-spread').textContent = '$' + (d.futures_spread || 0).toFixed(2);
                         document.getElementById('basis-value').textContent = (d.spread || 0).toFixed(2);
-                        document.getElementById('futures-contract').textContent = d.futures_symbol || '--';
+
+                        // Show contract name in futures label and contract section
+                        const futSymbol = d.futures_symbol || '';
+                        document.getElementById('futures-contract').textContent = futSymbol || '--';
+                        document.getElementById('futures-label').textContent = futSymbol ? `FUT (${futSymbol})` : 'FUTURES';
                         document.getElementById('days-expiry').textContent = d.days_to_expiry || '--';
 
                         // Z-Score
@@ -1928,7 +1932,7 @@ MONITOR_TEMPLATE = '''
 
         initCharts();
         updateData();
-        setInterval(updateData, 1000);
+        setInterval(updateData, 300);  // Refresh every 300ms
     </script>
 </body>
 </html>

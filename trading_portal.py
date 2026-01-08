@@ -73,6 +73,7 @@ class DatabaseManager:
                     swap_charge REAL DEFAULT 0,
                     lookback_period INTEGER DEFAULT 90,
                     lookback_unit TEXT DEFAULT 'minutes',
+                    points_per_minute INTEGER DEFAULT 1,
                     entry_std_dev REAL DEFAULT 2.0,
                     exit_std_dev REAL DEFAULT 0.2,
                     stop_loss_std_dev REAL DEFAULT 6.0,
@@ -140,12 +141,12 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT asset_name, spot_symbol, futures_symbol, futures_expiry, contract_size,
-                       swap_charge, lookback_period, lookback_unit, entry_std_dev, exit_std_dev,
-                       stop_loss_std_dev, time_stop_loss_days, max_positions, lot_size,
-                       algo_enabled, paper_mode, commission_per_lot, hurst_threshold,
-                       trending_duration_minutes, hurst_enabled, close_before_overnight,
-                       overnight_close_hour, overnight_close_minute, min_profit_per_lot,
-                       max_loss_per_lot
+                       swap_charge, lookback_period, lookback_unit, points_per_minute,
+                       entry_std_dev, exit_std_dev, stop_loss_std_dev, time_stop_loss_days,
+                       max_positions, lot_size, algo_enabled, paper_mode, commission_per_lot,
+                       hurst_threshold, trending_duration_minutes, hurst_enabled,
+                       close_before_overnight, overnight_close_hour, overnight_close_minute,
+                       min_profit_per_lot, max_loss_per_lot
                 FROM trading_config WHERE id = 1
             ''')
             row = cursor.fetchone()
@@ -161,23 +162,24 @@ class DatabaseManager:
                     'swap_charge': row[5] or 0,
                     'lookback_period': row[6] or 90,
                     'lookback_unit': row[7] or 'minutes',
-                    'entry_std_dev': row[8] or 2.0,
-                    'exit_std_dev': row[9] or 0.2,
-                    'stop_loss_std_dev': row[10] or 6.0,
-                    'time_stop_loss_days': row[11] or 0,
-                    'max_positions': row[12] or 1,
-                    'lot_size': row[13] or 0.01,
-                    'algo_enabled': bool(row[14]),
-                    'paper_mode': bool(row[15]) if row[15] is not None else True,
-                    'commission_per_lot': row[16] or 0,
-                    'hurst_threshold': row[17] or 0.5,
-                    'trending_duration_minutes': row[18] or 20,
-                    'hurst_enabled': bool(row[19]) if row[19] is not None else True,
-                    'close_before_overnight': bool(row[20]),
-                    'overnight_close_hour': row[21] or 16,
-                    'overnight_close_minute': row[22] or 40,
-                    'min_profit_per_lot': row[23] or 10,
-                    'max_loss_per_lot': row[24] or 50
+                    'points_per_minute': row[8] or 1,
+                    'entry_std_dev': row[9] or 2.0,
+                    'exit_std_dev': row[10] or 0.2,
+                    'stop_loss_std_dev': row[11] or 6.0,
+                    'time_stop_loss_days': row[12] or 0,
+                    'max_positions': row[13] or 1,
+                    'lot_size': row[14] or 0.01,
+                    'algo_enabled': bool(row[15]),
+                    'paper_mode': bool(row[16]) if row[16] is not None else True,
+                    'commission_per_lot': row[17] or 0,
+                    'hurst_threshold': row[18] or 0.5,
+                    'trending_duration_minutes': row[19] or 20,
+                    'hurst_enabled': bool(row[20]) if row[20] is not None else True,
+                    'close_before_overnight': bool(row[21]),
+                    'overnight_close_hour': row[22] or 16,
+                    'overnight_close_minute': row[23] or 40,
+                    'min_profit_per_lot': row[24] or 10,
+                    'max_loss_per_lot': row[25] or 50
                 }
             return {}
 
@@ -190,12 +192,12 @@ class DatabaseManager:
                 UPDATE trading_config SET
                     asset_name = ?, spot_symbol = ?, futures_symbol = ?, futures_expiry = ?,
                     contract_size = ?, swap_charge = ?, lookback_period = ?, lookback_unit = ?,
-                    entry_std_dev = ?, exit_std_dev = ?, stop_loss_std_dev = ?, time_stop_loss_days = ?,
-                    max_positions = ?, lot_size = ?, algo_enabled = ?, paper_mode = ?,
-                    commission_per_lot = ?, hurst_threshold = ?, trending_duration_minutes = ?,
-                    hurst_enabled = ?, close_before_overnight = ?, overnight_close_hour = ?,
-                    overnight_close_minute = ?, min_profit_per_lot = ?, max_loss_per_lot = ?,
-                    updated_at = ?
+                    points_per_minute = ?, entry_std_dev = ?, exit_std_dev = ?, stop_loss_std_dev = ?,
+                    time_stop_loss_days = ?, max_positions = ?, lot_size = ?, algo_enabled = ?,
+                    paper_mode = ?, commission_per_lot = ?, hurst_threshold = ?,
+                    trending_duration_minutes = ?, hurst_enabled = ?, close_before_overnight = ?,
+                    overnight_close_hour = ?, overnight_close_minute = ?, min_profit_per_lot = ?,
+                    max_loss_per_lot = ?, updated_at = ?
                 WHERE id = 1
             ''', (
                 config.get('asset_name', 'BTC'),
@@ -206,6 +208,7 @@ class DatabaseManager:
                 config.get('swap_charge', 0),
                 config.get('lookback_period', 90),
                 config.get('lookback_unit', 'minutes'),
+                config.get('points_per_minute', 1),
                 config.get('entry_std_dev', 2.0),
                 config.get('exit_std_dev', 0.2),
                 config.get('stop_loss_std_dev', 6.0),
@@ -488,21 +491,32 @@ class TradingMonitor:
 
     def _load_spread_history(self):
         """Load historical spread data from database, then bootstrap from OKX if needed"""
-        # First load from database
-        history = self.db.get_price_history(self.config.get('asset_name', 'BTC'), limit=2000)
+        # First load from database (increase limit for higher resolution)
+        lookback = self.config.get('lookback_period', 90)
+        unit = self.config.get('lookback_unit', 'minutes')
+        points_per_minute = self.config.get('points_per_minute', 1)
+
+        # Calculate required points: 90 min * 60 pts/min = 5400 points
+        if unit == 'days':
+            required = lookback * 24 * 60 * points_per_minute
+        else:
+            required = lookback * points_per_minute
+
+        # Load from database with enough limit
+        history = self.db.get_price_history(self.config.get('asset_name', 'BTC'), limit=max(required + 100, 2000))
         for h in history:
             if h['spread'] is not None:
                 self.spread_cache.append(h['spread'])
         logger.info(f"Loaded {len(self.spread_cache)} historical spread points from database")
+        logger.info(f"Required: {required} points ({lookback} {unit} × {points_per_minute} pts/min)")
 
-        # Check if we need more data
-        lookback = self.config.get('lookback_period', 90)
-        unit = self.config.get('lookback_unit', 'minutes')
-        required = lookback if unit == 'minutes' else lookback * 24
-
+        # Bootstrap from OKX candles (only provides 1-min candles, max 300)
+        # This gives us a head start, real-time will fill the rest
         if len(self.spread_cache) < required:
-            logger.info(f"Need {required} points, have {len(self.spread_cache)}. Bootstrapping from OKX...")
-            self._bootstrap_from_okx(required - len(self.spread_cache))
+            # OKX provides max 300 1-minute candles
+            candles_available = min(lookback, 300) if unit == 'minutes' else min(lookback * 24, 300)
+            logger.info(f"Need {required} points, have {len(self.spread_cache)}. Bootstrapping {candles_available} candles from OKX...")
+            self._bootstrap_from_okx(candles_available)
 
     def _bootstrap_from_okx(self, points_needed: int):
         """Fetch historical candle data from OKX to bootstrap spread calculations"""
@@ -764,12 +778,14 @@ class TradingMonitor:
         """Calculate Z-score"""
         lookback = self.config.get('lookback_period', 90)
         unit = self.config.get('lookback_unit', 'minutes')
+        points_per_minute = self.config.get('points_per_minute', 1)
 
-        # Required points based on unit
+        # Required points based on unit and resolution
+        # For 90 minutes with 60 points/minute = 5400 points
         if unit == 'days':
-            required = lookback * 24  # hourly points for days
+            required = lookback * 24 * 60 * points_per_minute  # points for days
         else:
-            required = lookback  # minute points
+            required = lookback * points_per_minute  # points for minutes
 
         spreads = list(self.spread_cache)
         count = len(spreads)
@@ -2078,6 +2094,17 @@ SETTINGS_TEMPLATE = '''
                             <option value="days" {{ 'selected' if config.lookback_unit == 'days' }}>Days</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label>Points/Minute</label>
+                        <select name="points_per_minute">
+                            <option value="1" {{ 'selected' if config.points_per_minute == 1 }}>1 (1 per minute)</option>
+                            <option value="6" {{ 'selected' if config.points_per_minute == 6 }}>6 (every 10 sec)</option>
+                            <option value="12" {{ 'selected' if config.points_per_minute == 12 }}>12 (every 5 sec)</option>
+                            <option value="30" {{ 'selected' if config.points_per_minute == 30 }}>30 (every 2 sec)</option>
+                            <option value="60" {{ 'selected' if config.points_per_minute == 60 }}>60 (every 1 sec)</option>
+                        </select>
+                        <small style="color:#888;">90min × 60pts/min = 5400 points</small>
+                    </div>
                 </div>
                 <div class="row">
                     <div class="form-group">
@@ -2224,11 +2251,14 @@ def settings():
             if key in request.form:
                 config[key] = request.form[key]
 
-        for key in ['contract_size', 'lookback_period', 'entry_std_dev', 'exit_std_dev',
-                    'stop_loss_std_dev', 'time_stop_loss_days', 'max_positions', 'lot_size',
-                    'commission_per_lot', 'hurst_threshold', 'trending_duration_minutes',
-                    'overnight_close_hour', 'overnight_close_minute', 'min_profit_per_lot',
-                    'max_loss_per_lot']:
+        for key in ['lookback_period', 'points_per_minute', 'max_positions',
+                    'trending_duration_minutes', 'overnight_close_hour', 'overnight_close_minute']:
+            if key in request.form:
+                config[key] = int(request.form[key])
+
+        for key in ['contract_size', 'entry_std_dev', 'exit_std_dev', 'stop_loss_std_dev',
+                    'time_stop_loss_days', 'lot_size', 'commission_per_lot', 'hurst_threshold',
+                    'min_profit_per_lot', 'max_loss_per_lot']:
             if key in request.form:
                 config[key] = float(request.form[key])
 

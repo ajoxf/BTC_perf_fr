@@ -187,3 +187,23 @@ def set_hurst_threshold():
     threshold = data.get('threshold', 0.5)
     trading_state.set_hurst_threshold(float(threshold))
     return jsonify({'success': True, 'threshold': threshold})
+
+
+@api_bp.route('/auto-trading/enable', methods=['POST'])
+def enable_auto_trading():
+    """Enable auto-trading"""
+    trading_state.set_auto_trading(True)
+    return jsonify({'success': True, 'enabled': True})
+
+
+@api_bp.route('/auto-trading/disable', methods=['POST'])
+def disable_auto_trading():
+    """Disable auto-trading"""
+    trading_state.set_auto_trading(False)
+    return jsonify({'success': True, 'enabled': False})
+
+
+@api_bp.route('/auto-trading/status', methods=['GET'])
+def get_auto_trading_status():
+    """Get auto-trading status"""
+    return jsonify({'enabled': trading_state.is_auto_trading_enabled()})

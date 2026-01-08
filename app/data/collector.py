@@ -241,7 +241,7 @@ class DataCollector:
         spot_price = spot_ticker.last_price if spot_ticker else 0
         perp_price = perp_ticker.last_price if perp_ticker else 0
 
-        # Get futures data with bid/ask
+        # Get futures data with bid/ask and volume
         futures_data = []
         for fut_inst in self._futures_instruments:
             fut_ticker = self.store.get_ticker(fut_inst)
@@ -260,10 +260,14 @@ class DataCollector:
                             'price': fut_ticker.last_price,
                             'bid': fut_ticker.bid_price,
                             'ask': fut_ticker.ask_price,
+                            'volume_24h': fut_ticker.volume_24h or 0,
                             'expiry': expiry.isoformat()
                         })
                     except ValueError:
                         pass
+
+        # Sort by volume (most liquid first), then by expiry for same volume
+        futures_data.sort(key=lambda x: (-x.get('volume_24h', 0), x.get('expiry', '')))
 
         return {
             'spot_price': spot_price,

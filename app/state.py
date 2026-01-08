@@ -53,6 +53,9 @@ class TradingState:
         # Trading costs (configurable)
         self._trading_fee = 0.0005  # 0.05% per trade
 
+        # Auto-trading toggle (master switch)
+        self._auto_trading_enabled = False  # Default OFF for safety
+
         self._funding_enabled = True
         self._funding_zscore = 0.0
         self._funding_signal = 'none'
@@ -149,6 +152,16 @@ class TradingState:
                 'round_trip_cost': self._trading_fee * 4,  # 4 trades: buy spot, sell futures, sell spot, buy futures
             }
 
+    def set_auto_trading(self, enabled: bool):
+        """Enable or disable auto-trading"""
+        with self._data_lock:
+            self._auto_trading_enabled = enabled
+
+    def is_auto_trading_enabled(self) -> bool:
+        """Check if auto-trading is enabled"""
+        with self._data_lock:
+            return self._auto_trading_enabled
+
     def get_market_data(self) -> Dict[str, Any]:
         """Get current market data for API"""
         with self._data_lock:
@@ -180,6 +193,7 @@ class TradingState:
         """Get strategy status for API"""
         with self._data_lock:
             return {
+                'auto_trading': self._auto_trading_enabled,
                 'basis': {
                     'enabled': self._basis_enabled,
                     'has_position': self._basis_has_position,

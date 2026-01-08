@@ -128,6 +128,33 @@
     </div>
 </div>
 
+<!-- Auto-Trading Master Switch -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card border-danger" id="auto-trading-card">
+            <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                <span class="fw-bold">
+                    <span id="auto-trading-icon">⚪</span> AUTO-TRADING
+                </span>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="auto-trading-enabled" style="transform: scale(1.5);">
+                    <label class="form-check-label fw-bold ms-2" for="auto-trading-enabled" id="auto-trading-label">OFF</label>
+                </div>
+            </div>
+            <div class="card-body py-2">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <span class="text-muted">When enabled, orders are executed automatically based on signals. Paper Mode: Simulated | Live Mode: Real OKX orders.</span>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <span class="badge bg-warning text-dark" id="trading-mode-badge">PAPER MODE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Row 3: Strategy Controls -->
 <div class="row mb-3">
     <div class="col-md-6">
@@ -311,6 +338,10 @@
                 }
                 if (data.costs) {
                     document.getElementById('trading-cost').textContent = data.costs.round_trip_pct.toFixed(2) + '%';
+                }
+                // Update auto-trading UI
+                if (typeof data.auto_trading !== 'undefined') {
+                    updateAutoTradingUI(data.auto_trading);
                 }
             })
             .catch(console.error);
@@ -512,6 +543,51 @@
             body: JSON.stringify({ threshold: parseFloat(this.value) })
         });
     });
+
+    // Auto-trading toggle handler
+    document.getElementById('auto-trading-enabled').addEventListener('change', function() {
+        const enabled = this.checked;
+
+        if (enabled) {
+            // Confirm before enabling
+            if (!confirm('Enable AUTO-TRADING?\n\nOrders will be executed automatically when signals are triggered.')) {
+                this.checked = false;
+                return;
+            }
+        }
+
+        fetch(`/api/auto-trading/${enabled ? 'enable' : 'disable'}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                updateAutoTradingUI(data.enabled);
+            })
+            .catch(console.error);
+    });
+
+    function updateAutoTradingUI(enabled) {
+        const card = document.getElementById('auto-trading-card');
+        const icon = document.getElementById('auto-trading-icon');
+        const label = document.getElementById('auto-trading-label');
+        const checkbox = document.getElementById('auto-trading-enabled');
+
+        checkbox.checked = enabled;
+
+        if (enabled) {
+            card.classList.remove('border-danger');
+            card.classList.add('border-success');
+            icon.textContent = '🟢';
+            label.textContent = 'ON';
+            label.classList.add('text-success');
+            label.classList.remove('text-danger');
+        } else {
+            card.classList.remove('border-success');
+            card.classList.add('border-danger');
+            icon.textContent = '⚪';
+            label.textContent = 'OFF';
+            label.classList.add('text-danger');
+            label.classList.remove('text-success');
+        }
+    }
 
     // Start updates
     startAutoRefresh(updateDashboard, 300);

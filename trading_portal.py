@@ -780,22 +780,31 @@ class TradingMonitor:
         unit = self.config.get('lookback_unit', 'minutes')
         points_per_minute = self.config.get('points_per_minute', 1)
 
-        # Required points based on unit and resolution
+        # Required points for FULL granularity (ideal target)
         # For 90 minutes with 60 points/minute = 5400 points
         if unit == 'days':
             required = lookback * 24 * 60 * points_per_minute  # points for days
+            min_required = lookback * 24 * 60  # minimum: 1 point per minute
         else:
             required = lookback * points_per_minute  # points for minutes
+            min_required = lookback  # minimum: 1 point per minute (from candles)
 
         spreads = list(self.spread_cache)
         count = len(spreads)
+
+        # We can calculate Z-score if we have:
+        # 1. Full granularity (count >= required), OR
+        # 2. At least lookback minutes worth of data (from candle bootstrap)
+        has_enough_data = count >= min_required
 
         stats = {
             'mean': 0,
             'std': 0,
             'count': count,
             'required': required,
+            'min_required': min_required,
             'complete': count >= required,
+            'has_enough_data': has_enough_data,
             'upper_entry': 0,
             'lower_entry': 0,
             'upper_exit': 0,
@@ -826,8 +835,9 @@ class TradingMonitor:
             stats['upper_stop'] = mean + (stop_std * std)
             stats['lower_stop'] = mean - (stop_std * std)
 
-            # ONLY return Z-score if we have enough data for reliable statistics
-            if count >= required:
+            # Return Z-score if we have enough data coverage
+            # Full granularity OR minimum coverage from candle bootstrap
+            if has_enough_data:
                 zscore = (current_spread - mean) / std
                 return zscore, stats
             else:
@@ -915,7 +925,8 @@ class TradingMonitor:
         signal = {'type': 'NO_SIGNAL', 'reason': '', 'action': ''}
 
         if zscore is None:
-            signal['reason'] = f"Collecting data: {stats['count']}/{stats['required']}"
+            min_req = stats.get('min_required', stats['required'])
+            signal['reason'] = f"Collecting data: {stats['count']}/{min_req} (min for {self.config.get('lookback_period', 90)} min lookback)"
             return signal
 
         asset_name = self.config.get('asset_name', 'BTC')
@@ -1829,8 +1840,10 @@ MONITOR_TEMPLATE = '''
                         if (d.stats) {
                             const count = d.stats.count || 0;
                             const required = d.stats.required || 90;
+                            const minRequired = d.stats.min_required || 90;
                             const complete = d.stats.complete || false;
-                            const pct = Math.min(100, (count / required) * 100);
+                            const hasEnoughData = d.stats.has_enough_data || false;
+                            const pct = Math.min(100, (count / minRequired) * 100);
 
                             let progressEl = document.getElementById('data-progress');
                             if (!progressEl) {
@@ -1844,10 +1857,16 @@ MONITOR_TEMPLATE = '''
                                 }
                             }
                             if (progressEl) {
-                                if (!complete) {
-                                    progressEl.innerHTML = `<span style="color:#f39c12">Data: ${count}/${required} (${pct.toFixed(0)}%)</span> <progress value="${count}" max="${required}" style="width:80px;height:8px;"></progress>`;
+                                if (complete) {
+                                    // Full granularity achieved
+                                    progressEl.innerHTML = `<span style="color:#27ae60">✓ Full data (${count}/${required} points)</span>`;
+                                } else if (hasEnoughData) {
+                                    // Bootstrap data ready - can calculate Z-score
+                                    const fullPct = Math.min(100, (count / required) * 100).toFixed(0);
+                                    progressEl.innerHTML = `<span style="color:#3498db">✓ Ready (${count} pts) | Building: ${fullPct}%</span> <progress value="${count}" max="${required}" style="width:60px;height:8px;"></progress>`;
                                 } else {
-                                    progressEl.innerHTML = `<span style="color:#27ae60">✓ Data ready (${count} points)</span>`;
+                                    // Still collecting minimum data
+                                    progressEl.innerHTML = `<span style="color:#f39c12">Collecting: ${count}/${minRequired} (${pct.toFixed(0)}%)</span> <progress value="${count}" max="${minRequired}" style="width:80px;height:8px;"></progress>`;
                                 }
                             }
                         }

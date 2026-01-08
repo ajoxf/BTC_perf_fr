@@ -538,13 +538,16 @@ class TradingMonitor:
 
                     if data.get('zscore') is not None:
                         stats = data.get('stats', {})
+                        # Store Z-score thresholds (constant values), not spread values
+                        entry_std = self.config.get('entry_std_dev', 2.0)
+                        exit_std = self.config.get('exit_std_dev', 0.2)
                         self.zscore_history.append({
                             'time': now.strftime('%H:%M:%S'),
                             'zscore': data['zscore'],
-                            'entry_upper': stats.get('upper_entry', 2),
-                            'entry_lower': stats.get('lower_entry', -2),
-                            'exit_upper': stats.get('upper_exit', 0.5),
-                            'exit_lower': stats.get('lower_exit', -0.5)
+                            'entry_upper': entry_std,      # e.g., +2
+                            'entry_lower': -entry_std,     # e.g., -2
+                            'exit_upper': exit_std,        # e.g., +0.2
+                            'exit_lower': -exit_std        # e.g., -0.2
                         })
 
                     # Save to database periodically
@@ -718,7 +721,7 @@ class TradingMonitor:
         if count < 20:  # Minimum points for any calculation
             return None, stats
 
-        # Use available data even if not complete
+        # Calculate mean and std for display purposes
         mean = np.mean(spreads)
         std = np.std(spreads)
 
@@ -737,8 +740,13 @@ class TradingMonitor:
             stats['upper_stop'] = mean + (stop_std * std)
             stats['lower_stop'] = mean - (stop_std * std)
 
-            zscore = (current_spread - mean) / std
-            return zscore, stats
+            # ONLY return Z-score if we have enough data for reliable statistics
+            if count >= required:
+                zscore = (current_spread - mean) / std
+                return zscore, stats
+            else:
+                # Not enough data yet - don't return z-score
+                return None, stats
 
         return None, stats
 
@@ -1244,24 +1252,30 @@ MONITOR_TEMPLATE = '''
         .account-item .value { font-size: 1.3rem; font-weight: 600; }
         .account-item .value.negative { color: #e74c3c; }
         .account-item .value.positive { color: #27ae60; }
-        .chart-container { height: 350px; position: relative; }
+        .chart-container { height: 600px; position: relative; width: 100%; }
         .asset-panel { padding: 15px; }
         .asset-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
-        .asset-name { font-size: 1.3rem; font-weight: 700; }
-        .sentiment { padding: 5px 15px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
+        .asset-name { font-size: 24px; font-weight: 700; }
+        .sentiment { padding: 5px 15px; border-radius: 4px; font-weight: 600; font-size: 16px; }
         .sentiment-cheap { background: #d4edda; color: #155724; }
         .sentiment-expensive { background: #f8d7da; color: #721c24; }
         .sentiment-fair { background: #e2e3e5; color: #383d41; }
         .price-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 15px; }
         .price-item { padding: 10px; background: #f8f9fa; border-radius: 6px; }
-        .price-item label { display: block; color: #888; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 3px; }
-        .price-item .value { font-size: 1.2rem; font-weight: 600; }
+        .price-item label { display: block; color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 3px; }
+        .price-item .value { font-size: 20px; font-weight: 600; }
         .basis-section { background: #f8f9fa; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
-        .basis-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        .basis-value { font-size: 1.5rem; font-weight: 700; }
+        .basis-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; }
+        .basis-value { font-size: 24px; font-weight: 700; }
         .zscore-display { text-align: center; padding: 20px; background: linear-gradient(135deg, #fff5f5, #fff); border: 2px solid #e74c3c; border-radius: 8px; margin-bottom: 15px; }
-        .zscore-value { font-size: 3rem; font-weight: 700; }
-        .zscore-note { color: #888; font-size: 0.85rem; margin-top: 5px; }
+        .zscore-value { font-size: 48px !important; font-weight: 700; }
+        .account-item .value { font-size: 20px; font-weight: 600; }
+        .stat-item .value { font-size: 20px; font-weight: 600; }
+        .entry-value { font-size: 20px; font-weight: 600; }
+        .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px; }
+        .info-card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 15px; }
+        .zscore-note { color: #888; font-size: 14px; margin-top: 5px; }
+        .top-info-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
         .hurst-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: 600; margin-top: 10px; }
         .hurst-mean { background: #d4edda; color: #155724; }
         .hurst-trending { background: #f8d7da; color: #721c24; }
@@ -1372,108 +1386,114 @@ MONITOR_TEMPLATE = '''
             </div>
         </div>
 
-        <div class="row">
-            <div class="col col-2">
-                <div class="card">
-                    <div class="card-header">BTC Z-Score</div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="zscore-chart"></canvas>
+        <!-- Info Panel Row - Above Charts -->
+        <div class="top-info-row">
+            <!-- Left: Prices & Basis -->
+            <div class="card">
+                <div class="asset-panel">
+                    <div class="asset-header">
+                        <span class="asset-name" id="asset-name">BTC</span>
+                        <span class="sentiment" id="sentiment">FAIR</span>
+                    </div>
+                    <div class="price-grid">
+                        <div class="price-item">
+                            <label>SPOT</label>
+                            <div class="value" id="spot-price">0.00</div>
+                        </div>
+                        <div class="price-item">
+                            <label>FUTURES</label>
+                            <div class="value" id="futures-price">0.00</div>
+                        </div>
+                        <div class="price-item">
+                            <label>SPOT SPREAD</label>
+                            <div class="value" id="spot-spread">$0.00</div>
+                        </div>
+                        <div class="price-item">
+                            <label>FUT SPREAD</label>
+                            <div class="value" id="futures-spread">$0.00</div>
                         </div>
                     </div>
+                    <div class="basis-section">
+                        <div class="basis-header">
+                            <span>Basis (F-S)</span>
+                            <span class="basis-value" id="basis-value">$0.00</span>
+                        </div>
+                        <div style="font-size: 14px;">Days to Expiry: <span id="days-expiry">--</span></div>
+                    </div>
                 </div>
+            </div>
 
-                <div class="card">
-                    <div class="card-header">BTC Price</div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="price-chart"></canvas>
+            <!-- Center: Z-Score Display -->
+            <div class="card">
+                <div class="asset-panel">
+                    <div class="zscore-display">
+                        <div class="zscore-note" id="zscore-note">COLLECTING DATA</div>
+                        <div class="zscore-value" id="zscore-value">--</div>
+                        <div class="hurst-badge" id="hurst-badge">Hurst: 0.500 | RANDOM</div>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <label>MEAN</label>
+                            <div class="value" id="stat-mean">0.00</div>
+                        </div>
+                        <div class="stat-item">
+                            <label>STD</label>
+                            <div class="value" id="stat-std">0.00</div>
+                        </div>
+                        <div class="stat-item">
+                            <label>SPREAD</label>
+                            <div class="value" id="stat-spread">0.00</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="col">
-                <div class="card">
-                    <div class="asset-panel">
-                        <div class="asset-header">
-                            <span class="asset-name" id="asset-name">BTC</span>
-                            <span class="sentiment" id="sentiment">FAIR</span>
-                        </div>
-
-                        <div class="price-grid">
-                            <div class="price-item">
-                                <label>SPOT</label>
-                                <div class="value" id="spot-price">0.00</div>
+            <!-- Right: Entry Levels -->
+            <div class="card">
+                <div class="asset-panel">
+                    <div class="entry-levels">
+                        <div class="entry-box entry-short">
+                            <div class="entry-title">Short Spread</div>
+                            <div class="entry-row">
+                                <span class="entry-label">Entry ↑</span>
+                                <span class="entry-value" id="short-entry">0.00</span>
                             </div>
-                            <div class="price-item">
-                                <label>FUTURES</label>
-                                <div class="value" id="futures-price">0.00</div>
-                            </div>
-                            <div class="price-item">
-                                <label>SPOT SPREAD</label>
-                                <div class="value" id="spot-spread">$0.00</div>
-                            </div>
-                            <div class="price-item">
-                                <label>FUT SPREAD</label>
-                                <div class="value" id="futures-spread">$0.00</div>
+                            <div class="entry-row">
+                                <span class="entry-label">Exit</span>
+                                <span class="entry-value" id="short-exit">0.00</span>
                             </div>
                         </div>
-
-                        <div class="basis-section">
-                            <div class="basis-header">
-                                <span>Basis (F-S)</span>
-                                <span class="basis-value" id="basis-value">$0.00</span>
+                        <div class="entry-box entry-long">
+                            <div class="entry-title">Long Spread</div>
+                            <div class="entry-row">
+                                <span class="entry-label">Entry ↓</span>
+                                <span class="entry-value" id="long-entry">0.00</span>
                             </div>
-                            <div>Days to Expiry: <span id="days-expiry">--</span></div>
-                        </div>
-
-                        <div class="zscore-display">
-                            <div class="zscore-note" id="zscore-note">OVERNIGHT CLOSE</div>
-                            <div class="zscore-value" id="zscore-value">0.00σ</div>
-                            <div class="hurst-badge" id="hurst-badge">Hurst: 0.500 | RANDOM</div>
-                        </div>
-
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <label>MEAN</label>
-                                <div class="value" id="stat-mean">0.00</div>
-                            </div>
-                            <div class="stat-item">
-                                <label>STD</label>
-                                <div class="value" id="stat-std">0.00</div>
-                            </div>
-                            <div class="stat-item">
-                                <label>SPREAD</label>
-                                <div class="value" id="stat-spread">0.00</div>
-                            </div>
-                        </div>
-
-                        <div class="entry-levels">
-                            <div class="entry-box entry-short">
-                                <div class="entry-title">Short Spread</div>
-                                <div class="entry-row">
-                                    <span class="entry-label">Entry ↑</span>
-                                    <span class="entry-value" id="short-entry">0.00</span>
-                                </div>
-                                <div class="entry-row">
-                                    <span class="entry-label">Exit</span>
-                                    <span class="entry-value" id="short-exit">0.00</span>
-                                </div>
-                            </div>
-                            <div class="entry-box entry-long">
-                                <div class="entry-title">Long Spread</div>
-                                <div class="entry-row">
-                                    <span class="entry-label">Entry ↓</span>
-                                    <span class="entry-value" id="long-entry">0.00</span>
-                                </div>
-                                <div class="entry-row">
-                                    <span class="entry-label">Exit</span>
-                                    <span class="entry-value" id="long-exit">0.00</span>
-                                </div>
+                            <div class="entry-row">
+                                <span class="entry-label">Exit</span>
+                                <span class="entry-value" id="long-exit">0.00</span>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Full Width Charts -->
+        <div class="card">
+            <div class="card-header">BTC Z-Score</div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="zscore-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">BTC Price</div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="price-chart"></canvas>
                 </div>
             </div>
         </div>

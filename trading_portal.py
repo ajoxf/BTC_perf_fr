@@ -1322,6 +1322,12 @@ MONITOR_TEMPLATE = '''
         .thresholds { color: #666; font-size: 0.9rem; }
         .session { font-weight: 500; }
         .session-icon { margin-right: 5px; }
+        .connection-status { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
+        .connection-status .light { width: 10px; height: 10px; border-radius: 50%; }
+        .connection-connected { background: #d4edda; color: #155724; }
+        .connection-connected .light { background: #28a745; box-shadow: 0 0 6px #28a745; }
+        .connection-disconnected { background: #f8d7da; color: #721c24; }
+        .connection-disconnected .light { background: #dc3545; box-shadow: 0 0 6px #dc3545; }
         .btn { padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
         .btn:hover { background: #f5f5f5; }
         .btn-danger { color: #e74c3c; border-color: #e74c3c; }
@@ -1428,6 +1434,11 @@ MONITOR_TEMPLATE = '''
             <div class="session" id="session">
                 <span class="session-icon">🇺🇸</span>
                 <span>Session: <span id="session-name">New York</span></span>
+            </div>
+
+            <div id="connection-indicator" class="connection-status connection-disconnected">
+                <span class="light"></span>
+                <span id="connection-text">DISCONNECTED</span>
             </div>
 
             <div style="margin-left: auto; display: flex; gap: 10px;">
@@ -1740,6 +1751,17 @@ MONITOR_TEMPLATE = '''
                     // Update session
                     if (data.market_session) {
                         document.getElementById('session-name').textContent = data.market_session;
+                    }
+
+                    // Update connection status
+                    const connIndicator = document.getElementById('connection-indicator');
+                    const connText = document.getElementById('connection-text');
+                    if (data.connected) {
+                        connIndicator.className = 'connection-status connection-connected';
+                        connText.textContent = 'CONNECTED';
+                    } else {
+                        connIndicator.className = 'connection-status connection-disconnected';
+                        connText.textContent = 'DISCONNECTED';
                     }
 
                     // Update account
@@ -2359,6 +2381,12 @@ def get_data():
     data = monitor.current_data
     config = db.get_config()
 
+    # Check connection status
+    connected = False
+    if monitor.client and data:
+        # Connected if we have recent price data
+        connected = data.get('spot_price') is not None
+
     return jsonify({
         'data': data,
         'account': monitor.get_account_info(),
@@ -2370,7 +2398,8 @@ def get_data():
         'trade_history': db.get_trades(limit=100),
         'trade_summary': db.get_trade_summary(),
         'config': config,
-        'market_session': data.get('session', 'Unknown') if data else 'Unknown'
+        'market_session': data.get('session', 'Unknown') if data else 'Unknown',
+        'connected': connected
     })
 
 

@@ -11,6 +11,9 @@ import yaml
 db = SQLAlchemy()
 migrate = Migrate()
 
+# Get the base directory (project root)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def create_app(config_path: str = None) -> Flask:
     """Create and configure the Flask application"""
@@ -24,14 +27,16 @@ def create_app(config_path: str = None) -> Flask:
     else:
         config = {}
 
-    # Ensure required directories exist
-    db_path = config.get('database', {}).get('path', 'instance/trading.db')
+    # Ensure required directories exist (use absolute paths)
+    db_relative_path = config.get('database', {}).get('path', 'instance/trading.db')
+    db_path = os.path.join(BASE_DIR, db_relative_path)
     db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    os.makedirs('logs', exist_ok=True)
+    logs_dir = os.path.join(BASE_DIR, 'logs')
 
-    # Flask config
+    os.makedirs(db_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
+
+    # Flask config - use absolute path for SQLite
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
     app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False

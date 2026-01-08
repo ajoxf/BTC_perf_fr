@@ -2425,10 +2425,9 @@ def get_data():
         connected = data.get('spot_price') is not None
 
     # Authenticated if account info has no error (API returned code 0)
-    if account_info and not account_info.get('error'):
-        # Server field shows actual connection status
-        server = account_info.get('server', '')
-        if 'OKX' in server and 'Error' not in server:
+    if account_info:
+        logger.info(f"Auth check - error: {account_info.get('error')}, server: {account_info.get('server')}")
+        if not account_info.get('error'):
             authenticated = True
 
     return jsonify({

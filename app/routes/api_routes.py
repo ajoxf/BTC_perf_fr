@@ -158,3 +158,32 @@ def close_position(position_id: int):
     """Manually close a position"""
     # This would interact with the trading engine
     return jsonify({'success': True, 'position_id': position_id})
+
+
+@api_bp.route('/hurst/settings', methods=['GET'])
+def get_hurst_settings():
+    """Get Hurst filter settings"""
+    return jsonify(trading_state.get_hurst_settings())
+
+
+@api_bp.route('/hurst/enable', methods=['POST'])
+def enable_hurst():
+    """Enable Hurst filter"""
+    trading_state.set_hurst_enabled(True)
+    return jsonify({'success': True, 'enabled': True})
+
+
+@api_bp.route('/hurst/disable', methods=['POST'])
+def disable_hurst():
+    """Disable Hurst filter"""
+    trading_state.set_hurst_enabled(False)
+    return jsonify({'success': True, 'enabled': False})
+
+
+@api_bp.route('/hurst/threshold', methods=['POST'])
+def set_hurst_threshold():
+    """Set Hurst threshold"""
+    data = request.get_json()
+    threshold = data.get('threshold', 0.5)
+    trading_state.set_hurst_threshold(float(threshold))
+    return jsonify({'success': True, 'threshold': threshold})

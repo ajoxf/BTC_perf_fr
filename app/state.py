@@ -42,6 +42,13 @@ class TradingState:
         self._basis_pct = 0.0
         self._basis_has_position = False
 
+        # Hurst settings
+        self._hurst_enabled = True
+        self._hurst_threshold = 0.5
+
+        # Trading costs (configurable)
+        self._trading_fee = 0.0005  # 0.05% per trade
+
         self._funding_enabled = True
         self._funding_zscore = 0.0
         self._funding_signal = 'none'
@@ -96,6 +103,42 @@ class TradingState:
                 return self._funding_enabled
         return False
 
+    def set_hurst_enabled(self, enabled: bool):
+        """Enable or disable Hurst filter"""
+        with self._data_lock:
+            self._hurst_enabled = enabled
+
+    def set_hurst_threshold(self, threshold: float):
+        """Set Hurst threshold (0.0 to 1.0)"""
+        with self._data_lock:
+            self._hurst_threshold = max(0.0, min(1.0, threshold))
+
+    def get_hurst_settings(self) -> Dict[str, Any]:
+        """Get Hurst settings"""
+        with self._data_lock:
+            return {
+                'enabled': self._hurst_enabled,
+                'threshold': self._hurst_threshold
+            }
+
+    def is_hurst_enabled(self) -> bool:
+        """Check if Hurst filter is enabled"""
+        with self._data_lock:
+            return self._hurst_enabled
+
+    def get_hurst_threshold(self) -> float:
+        """Get Hurst threshold"""
+        with self._data_lock:
+            return self._hurst_threshold
+
+    def get_trading_costs(self) -> Dict[str, float]:
+        """Get trading cost configuration"""
+        with self._data_lock:
+            return {
+                'fee_per_trade': self._trading_fee,
+                'round_trip_cost': self._trading_fee * 4,  # 4 trades: buy spot, sell futures, sell spot, buy futures
+            }
+
     def get_market_data(self) -> Dict[str, Any]:
         """Get current market data for API"""
         with self._data_lock:
@@ -133,6 +176,14 @@ class TradingState:
                     'current_rate': self._funding_rate,
                     'current_zscore': self._funding_zscore,
                     'signal': self._funding_signal
+                },
+                'hurst': {
+                    'enabled': self._hurst_enabled,
+                    'threshold': self._hurst_threshold
+                },
+                'costs': {
+                    'fee_per_trade': self._trading_fee,
+                    'round_trip_pct': self._trading_fee * 4 * 100  # As percentage
                 }
             }
 

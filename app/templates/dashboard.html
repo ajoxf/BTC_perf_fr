@@ -1,218 +1,227 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - BTC Trading System{% endblock %}
+{% block title %}Dashboard - BTC Basis Trading{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-    <!-- Market Data -->
-    <div class="col-md-4">
-        <div class="card h-100">
-            <div class="card-header">
-                <i class="bi bi-currency-bitcoin"></i> Market Data
-            </div>
+<!-- Row 1: Market Prices & Spread -->
+<div class="row mb-3">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Market Data & Spread Analysis</div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-6 mb-3">
+                    <div class="col-md-3 text-center border-end">
                         <div class="metric-label">BTC Spot</div>
-                        <div class="metric-value" id="spot-price">--</div>
+                        <div class="metric-value-lg" id="spot-price">--</div>
                     </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-md-3 text-center border-end">
+                        <div class="metric-label">Selected Futures</div>
+                        <div class="metric-value-lg" id="futures-price">--</div>
+                        <div class="small text-muted" id="futures-contract">--</div>
+                    </div>
+                    <div class="col-md-3 text-center border-end">
+                        <div class="metric-label">Spread ($)</div>
+                        <div class="metric-value-lg" id="spread-usd">--</div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="metric-label">Spread (%)</div>
+                        <div class="metric-value-lg" id="spread-pct">--</div>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <div class="metric-label">Round-Trip Cost</div>
+                        <div class="metric-value" id="trading-cost">0.20%</div>
+                        <div class="small text-muted">(4 x 0.05% fee)</div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="metric-label">Net Profit if Converges</div>
+                        <div class="metric-value" id="net-profit">--</div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="metric-label">Profitable?</div>
+                        <div class="metric-value" id="is-profitable">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">Perpetual (Funding Strategy)</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6 mb-2">
                         <div class="metric-label">BTC Perp</div>
                         <div class="metric-value" id="perp-price">--</div>
                     </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-6 mb-2">
                         <div class="metric-label">Funding Rate</div>
                         <div class="metric-value" id="funding-rate">--</div>
                     </div>
-                    <div class="col-6 mb-3">
-                        <div class="metric-label">Next Funding</div>
-                        <div class="metric-value" id="next-funding">--</div>
+                    <div class="col-6">
+                        <div class="metric-label">Next Settlement</div>
+                        <div class="metric-value" id="funding-countdown">--</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-label">Predicted Rate</div>
+                        <div class="metric-value" id="predicted-rate">--</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Basis Strategy -->
-    <div class="col-md-4">
-        <div class="card h-100">
+<!-- Row 2: Futures Contracts Table -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">Futures Contracts (Click to Select for Basis Trade)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Contract</th>
+                            <th>Price</th>
+                            <th>Spread ($)</th>
+                            <th>Spread (%)</th>
+                            <th>Expiry Date</th>
+                            <th>Days Left</th>
+                            <th>Annualized</th>
+                            <th>Select</th>
+                        </tr>
+                    </thead>
+                    <tbody id="futures-table">
+                        <tr><td colspan="8" class="text-center text-muted">Loading futures...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row 3: Strategy Controls -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-arrows-expand"></i> Basis Strategy</span>
-                <div class="form-check form-switch">
+                <span>Basis Strategy</span>
+                <div class="form-check form-switch mb-0">
                     <input class="form-check-input" type="checkbox" id="basis-enabled" checked>
+                    <label class="form-check-label small" for="basis-enabled">Enabled</label>
                 </div>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <div class="metric-label">Current Basis</div>
-                        <div class="metric-value" id="basis-value">--</div>
-                    </div>
-                    <div class="col-6 mb-3">
+                <div class="row mb-2">
+                    <div class="col-4 text-center">
                         <div class="metric-label">Z-Score</div>
                         <div class="metric-value" id="basis-zscore">--</div>
                     </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-4 text-center">
                         <div class="metric-label">Hurst</div>
                         <div class="metric-value" id="basis-hurst">--</div>
                     </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-4 text-center">
                         <div class="metric-label">Signal</div>
-                        <div id="basis-signal">
-                            <span class="badge bg-secondary">NONE</span>
+                        <div id="basis-signal"><span class="badge bg-secondary">NONE</span></div>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <div class="row align-items-center">
+                    <div class="col-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="hurst-enabled" checked>
+                            <label class="form-check-label small" for="hurst-enabled">Use Hurst Filter</label>
                         </div>
                     </div>
+                    <div class="col-6">
+                        <label class="form-label small mb-0">Threshold: <span id="hurst-threshold-value">0.50</span></label>
+                        <input type="range" class="form-range" id="hurst-threshold" min="0" max="1" step="0.05" value="0.5">
+                    </div>
+                </div>
+                <div class="small text-muted mt-1">
+                    Hurst &lt; threshold = mean-reverting (trade). Hurst &gt; threshold = trending (skip).
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Funding Strategy -->
-    <div class="col-md-4">
-        <div class="card h-100">
+    <div class="col-md-6">
+        <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-clock-history"></i> Funding Strategy</span>
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="funding-enabled" checked>
+                <span>Funding Strategy</span>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="funding-enabled">
+                    <label class="form-check-label small" for="funding-enabled">Enabled</label>
                 </div>
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-6 mb-3">
+                    <div class="col-4 text-center">
                         <div class="metric-label">Funding Rate</div>
                         <div class="metric-value" id="funding-current">--</div>
                     </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-4 text-center">
                         <div class="metric-label">Z-Score</div>
                         <div class="metric-value" id="funding-zscore">--</div>
                     </div>
-                    <div class="col-6 mb-3">
-                        <div class="metric-label">Time to Settlement</div>
-                        <div class="metric-value" id="funding-countdown">--</div>
-                    </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-4 text-center">
                         <div class="metric-label">Signal</div>
-                        <div id="funding-signal">
-                            <span class="badge bg-secondary">NONE</span>
-                        </div>
+                        <div id="funding-signal"><span class="badge bg-secondary">NONE</span></div>
                     </div>
+                </div>
+                <hr class="my-2">
+                <div class="small text-muted">
+                    <strong>Cost Note:</strong> Perpetual funding is paid/received every 8 hours.
+                    When short perp + long spot: receive funding if positive rate, pay if negative.
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row mb-4">
-    <!-- P&L Summary -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-graph-up-arrow"></i> P&L Summary
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-4 text-center">
-                        <div class="metric-label">Unrealized P&L</div>
-                        <div class="metric-value" id="unrealized-pnl">$0.00</div>
-                    </div>
-                    <div class="col-4 text-center">
-                        <div class="metric-label">Realized P&L</div>
-                        <div class="metric-value" id="realized-pnl">$0.00</div>
-                    </div>
-                    <div class="col-4 text-center">
-                        <div class="metric-label">Total P&L</div>
-                        <div class="metric-value" id="total-pnl">$0.00</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Risk Status -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-shield-check"></i> Risk Status
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-4 text-center">
-                        <div class="metric-label">Daily P&L</div>
-                        <div class="metric-value" id="daily-pnl">$0.00</div>
-                    </div>
-                    <div class="col-4 text-center">
-                        <div class="metric-label">Exposure</div>
-                        <div class="metric-value" id="current-exposure">$0</div>
-                    </div>
-                    <div class="col-4 text-center">
-                        <div class="metric-label">Max Exposure</div>
-                        <div class="metric-value" id="max-exposure">$25,000</div>
-                    </div>
-                </div>
-                <div class="progress mt-3" style="height: 10px;">
-                    <div class="progress-bar bg-success" role="progressbar" id="exposure-bar" style="width: 0%"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
+<!-- Row 4: Positions & Trades -->
 <div class="row">
-    <!-- Active Positions -->
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">
-                <i class="bi bi-wallet2"></i> Active Positions
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
-                        <thead>
-                            <tr>
-                                <th>Strategy</th>
-                                <th>Side</th>
-                                <th>Size</th>
-                                <th>Unreal. P&L</th>
-                                <th>Funding</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="positions-table">
-                            <tr>
-                                <td colspan="6" class="text-center text-muted">No active positions</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="card-header">Active Positions</div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Strategy</th>
+                            <th>Entry</th>
+                            <th>Current</th>
+                            <th>P&L</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positions-table">
+                        <tr><td colspan="5" class="text-center text-muted">No active positions</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
-
-    <!-- Recent Trades -->
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">
-                <i class="bi bi-journal-text"></i> Recent Trades
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Strategy</th>
-                                <th>Type</th>
-                                <th>Signal</th>
-                                <th>P&L</th>
-                            </tr>
-                        </thead>
-                        <tbody id="trades-table">
-                            <tr>
-                                <td colspan="5" class="text-center text-muted">No recent trades</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="card-header">Recent Signals</div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Strategy</th>
+                            <th>Signal</th>
+                            <th>Z-Score</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signals-table">
+                        <tr><td colspan="5" class="text-center text-muted">No recent signals</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -221,19 +230,26 @@
 
 {% block extra_js %}
 <script>
+    let selectedFutures = null;
+    let spotPrice = 0;
+
     function updateDashboard() {
         // Fetch market data
         fetch('/api/market-data')
             .then(r => r.json())
             .then(data => {
-                if (data.spot && data.spot.price) {
-                    document.getElementById('spot-price').textContent = formatPrice(data.spot.price);
-                }
-                if (data.perp && data.perp.price) {
+                spotPrice = data.spot?.price || 0;
+                document.getElementById('spot-price').textContent = formatPrice(spotPrice);
+
+                if (data.perp) {
                     document.getElementById('perp-price').textContent = formatPrice(data.perp.price);
-                }
-                if (data.perp && data.perp.funding_rate !== undefined) {
                     document.getElementById('funding-rate').textContent = formatPercent(data.perp.funding_rate);
+                    document.getElementById('predicted-rate').textContent = formatPercent(data.perp.predicted_rate || 0);
+                }
+
+                // Update futures table
+                if (data.futures && data.futures.length > 0) {
+                    updateFuturesTable(data.futures);
                 }
             })
             .catch(console.error);
@@ -245,10 +261,20 @@
                 if (data.basis) {
                     document.getElementById('basis-zscore').innerHTML = formatZScore(data.basis.current_zscore);
                     document.getElementById('basis-hurst').textContent = data.basis.current_hurst.toFixed(3);
+                    updateSignalBadge('basis-signal', data.basis.signal);
                 }
                 if (data.funding) {
                     document.getElementById('funding-current').textContent = formatPercent(data.funding.current_rate);
                     document.getElementById('funding-zscore').innerHTML = formatZScore(data.funding.current_zscore);
+                    updateSignalBadge('funding-signal', data.funding.signal);
+                }
+                if (data.hurst) {
+                    document.getElementById('hurst-enabled').checked = data.hurst.enabled;
+                    document.getElementById('hurst-threshold').value = data.hurst.threshold;
+                    document.getElementById('hurst-threshold-value').textContent = data.hurst.threshold.toFixed(2);
+                }
+                if (data.costs) {
+                    document.getElementById('trading-cost').textContent = data.costs.round_trip_pct.toFixed(2) + '%';
                 }
             })
             .catch(console.error);
@@ -259,74 +285,121 @@
             .then(positions => {
                 const tbody = document.getElementById('positions-table');
                 if (positions.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No active positions</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No active positions</td></tr>';
                 } else {
                     tbody.innerHTML = positions.map(p => `
                         <tr>
                             <td>${p.strategy}</td>
-                            <td>${p.side || 'long_spread'}</td>
-                            <td>$${p.spot_size ? (p.spot_size * p.entry_spot_price).toFixed(0) : 0}</td>
-                            <td>${formatPnL(p.unrealized_pnl)}</td>
-                            <td>$${(p.total_funding || 0).toFixed(2)}</td>
+                            <td>${formatPrice(p.entry_spot_price)}</td>
+                            <td>--</td>
+                            <td>${formatPnL(p.unrealized_pnl || 0)}</td>
                             <td><button class="btn btn-sm btn-outline-danger" onclick="closePosition(${p.id})">Close</button></td>
                         </tr>
                     `).join('');
                 }
             })
             .catch(console.error);
+    }
 
-        // Fetch recent trades
-        fetch('/api/trades')
-            .then(r => r.json())
-            .then(trades => {
-                const tbody = document.getElementById('trades-table');
-                const recent = trades.slice(0, 5);
-                if (recent.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No recent trades</td></tr>';
-                } else {
-                    tbody.innerHTML = recent.map(t => `
-                        <tr>
-                            <td>${new Date(t.timestamp).toLocaleTimeString()}</td>
-                            <td>${t.strategy}</td>
-                            <td>${t.trade_type}</td>
-                            <td>${t.signal_value ? t.signal_value.toFixed(2) : '-'}</td>
-                            <td>${t.realized_pnl ? formatPnL(t.realized_pnl) : '-'}</td>
-                        </tr>
-                    `).join('');
-                }
-            })
-            .catch(console.error);
+    function updateFuturesTable(futures) {
+        const tbody = document.getElementById('futures-table');
 
-        // Fetch risk status
-        fetch('/api/risk')
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('daily-pnl').innerHTML = formatPnL(data.daily_pnl);
-                document.getElementById('current-exposure').textContent = '$' + data.current_exposure.toLocaleString();
-                document.getElementById('max-exposure').textContent = '$' + data.max_exposure.toLocaleString();
+        if (!futures || futures.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No futures contracts available</td></tr>';
+            return;
+        }
 
-                const exposurePct = (data.current_exposure / data.max_exposure) * 100;
-                const bar = document.getElementById('exposure-bar');
-                bar.style.width = exposurePct + '%';
-                bar.className = 'progress-bar ' + (exposurePct > 80 ? 'bg-danger' : exposurePct > 50 ? 'bg-warning' : 'bg-success');
-            })
-            .catch(console.error);
+        // Sort by expiry
+        futures.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+
+        tbody.innerHTML = futures.map(f => {
+            const price = f.price || 0;
+            const spread = price - spotPrice;
+            const spreadPct = spotPrice > 0 ? (spread / spotPrice) : 0;
+            const days = daysUntil(f.expiry);
+            const annualized = days > 0 ? (spreadPct / days * 365 * 100).toFixed(2) : '--';
+
+            // Determine row class based on days to expiry
+            let rowClass = '';
+            if (days <= 3) rowClass = 'expiry-danger';
+            else if (days <= 7) rowClass = 'expiry-warning';
+
+            const isSelected = selectedFutures === f.instrument;
+
+            // Update main display if this is selected (or select first by default)
+            if (isSelected || (!selectedFutures && futures.indexOf(f) === 0)) {
+                if (!selectedFutures) selectedFutures = f.instrument;
+                updateSelectedFutures(f, spread, spreadPct);
+            }
+
+            return `
+                <tr class="${rowClass}">
+                    <td><strong>${f.instrument}</strong></td>
+                    <td>${formatPrice(price)}</td>
+                    <td>${formatSpread(spread)}</td>
+                    <td>${formatBasisPercent(spreadPct)}</td>
+                    <td>${new Date(f.expiry).toLocaleDateString()}</td>
+                    <td class="${days <= 3 ? 'text-danger fw-bold' : days <= 7 ? 'text-warning' : ''}">${days}d</td>
+                    <td>${annualized}%</td>
+                    <td>
+                        <button class="btn btn-sm ${isSelected ? 'btn-dark' : 'btn-outline-dark'}"
+                                onclick="selectFutures('${f.instrument}')">
+                            ${isSelected ? 'Selected' : 'Select'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function updateSelectedFutures(f, spread, spreadPct) {
+        document.getElementById('futures-price').textContent = formatPrice(f.price);
+        document.getElementById('futures-contract').textContent = f.instrument;
+        document.getElementById('spread-usd').innerHTML = formatSpread(spread);
+        document.getElementById('spread-pct').innerHTML = formatBasisPercent(spreadPct);
+
+        // Calculate net profit after costs (0.2% round trip)
+        const costPct = 0.002;
+        const netProfitPct = Math.abs(spreadPct) - costPct;
+        document.getElementById('net-profit').innerHTML = formatBasisPercent(netProfitPct);
+
+        // Is it profitable?
+        if (Math.abs(spreadPct) > costPct) {
+            document.getElementById('is-profitable').innerHTML = '<span class="text-success">YES</span>';
+        } else {
+            document.getElementById('is-profitable').innerHTML = '<span class="text-danger">NO</span>';
+        }
+    }
+
+    function selectFutures(instrument) {
+        selectedFutures = instrument;
+        updateDashboard();
+    }
+
+    function updateSignalBadge(elementId, signal) {
+        const el = document.getElementById(elementId);
+        let badgeClass = 'bg-secondary';
+        let text = signal.toUpperCase();
+
+        if (signal.includes('entry') || signal.includes('long') || signal.includes('short')) {
+            badgeClass = 'bg-success';
+        } else if (signal.includes('exit')) {
+            badgeClass = 'bg-warning text-dark';
+        }
+
+        el.innerHTML = `<span class="badge ${badgeClass}">${text}</span>`;
     }
 
     function closePosition(positionId) {
-        if (confirm('Are you sure you want to close this position?')) {
+        if (confirm('Close this position?')) {
             fetch(`/api/position/${positionId}/close`, { method: 'POST' })
                 .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        updateDashboard();
-                    }
-                })
+                .then(() => updateDashboard())
                 .catch(console.error);
         }
     }
 
-    // Update funding countdown
+    // Funding countdown
     function updateFundingCountdown() {
         const now = new Date();
         const hours = [0, 8, 16];
@@ -348,21 +421,34 @@
         }
 
         const diff = nextSettlement - now;
-        const hours_left = Math.floor(diff / (1000 * 60 * 60));
-        const mins_left = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-        document.getElementById('funding-countdown').textContent = `${hours_left}h ${mins_left}m`;
+        const hrs = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        document.getElementById('funding-countdown').textContent = `${hrs}h ${mins}m`;
     }
 
-    // Strategy toggle handlers
+    // Event handlers
     document.getElementById('basis-enabled').addEventListener('change', function() {
-        const action = this.checked ? 'enable' : 'disable';
-        fetch(`/api/strategy/basis/${action}`, { method: 'POST' });
+        fetch(`/api/strategy/basis/${this.checked ? 'enable' : 'disable'}`, { method: 'POST' });
     });
 
     document.getElementById('funding-enabled').addEventListener('change', function() {
-        const action = this.checked ? 'enable' : 'disable';
-        fetch(`/api/strategy/funding/${action}`, { method: 'POST' });
+        fetch(`/api/strategy/funding/${this.checked ? 'enable' : 'disable'}`, { method: 'POST' });
+    });
+
+    document.getElementById('hurst-enabled').addEventListener('change', function() {
+        fetch(`/api/hurst/${this.checked ? 'enable' : 'disable'}`, { method: 'POST' });
+    });
+
+    document.getElementById('hurst-threshold').addEventListener('input', function() {
+        document.getElementById('hurst-threshold-value').textContent = parseFloat(this.value).toFixed(2);
+    });
+
+    document.getElementById('hurst-threshold').addEventListener('change', function() {
+        fetch('/api/hurst/threshold', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ threshold: parseFloat(this.value) })
+        });
     });
 
     // Start updates

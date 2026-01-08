@@ -98,13 +98,18 @@
     </div>
 </div>
 
-<!-- Row 2: Futures Contracts Table -->
+<!-- Row 2: Selected Futures Contract -->
 <div class="row mb-3">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">Futures Contracts (Click to Select for Basis Trade)</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Selected Futures Contract</span>
+                <select class="form-select form-select-sm" style="width: auto;" id="futures-selector" onchange="selectFutures(this.value)">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
             <div class="card-body p-0">
-                <table class="table table-sm table-hover mb-0">
+                <table class="table table-sm mb-0">
                     <thead>
                         <tr>
                             <th>Contract</th>
@@ -116,11 +121,10 @@
                             <th>Expiry Date</th>
                             <th>Days Left</th>
                             <th>Annualized</th>
-                            <th>Select</th>
                         </tr>
                     </thead>
                     <tbody id="futures-table">
-                        <tr><td colspan="10" class="text-center text-muted">Loading futures...</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">Loading futures...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -423,9 +427,10 @@
 
     function updateFuturesTable(futures) {
         const tbody = document.getElementById('futures-table');
+        const selector = document.getElementById('futures-selector');
 
         if (!futures || futures.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No futures contracts available</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No futures contracts available</td></tr>';
             return;
         }
 
@@ -437,46 +442,42 @@
             selectedFutures = futures[0].instrument;
         }
 
-        tbody.innerHTML = futures.map(f => {
-            const price = f.price || 0;
+        // Update dropdown selector
+        selector.innerHTML = futures.map(f => {
+            const days = daysUntil(f.expiry);
+            return `<option value="${f.instrument}" ${f.instrument === selectedFutures ? 'selected' : ''}>${f.instrument} (${days}d)</option>`;
+        }).join('');
+
+        // Find and display only the selected contract
+        const selected = futures.find(f => f.instrument === selectedFutures) || futures[0];
+        if (selected) {
+            const price = selected.price || 0;
             const spread = price - spotPrice;
             const spreadPct = spotPrice > 0 ? (spread / spotPrice) : 0;
-            const days = daysUntil(f.expiry);
+            const days = daysUntil(selected.expiry);
             const annualized = days > 0 ? (spreadPct / days * 365 * 100).toFixed(2) : '--';
 
-            // Determine row class based on days to expiry
             let rowClass = '';
             if (days <= 3) rowClass = 'expiry-danger';
             else if (days <= 7) rowClass = 'expiry-warning';
 
-            const isSelected = selectedFutures === f.instrument;
+            selectedFuturesData = selected;
+            updateSelectedFutures(selected, spread, spreadPct);
 
-            // Update main display if this is selected
-            if (isSelected) {
-                selectedFuturesData = f;
-                updateSelectedFutures(f, spread, spreadPct);
-            }
-
-            return `
+            tbody.innerHTML = `
                 <tr class="${rowClass}">
-                    <td><strong>${f.instrument}</strong></td>
+                    <td><strong>${selected.instrument}</strong></td>
                     <td>${formatPrice(price)}</td>
-                    <td class="text-success">${formatPrice(f.bid || 0)}</td>
-                    <td class="text-danger">${formatPrice(f.ask || 0)}</td>
+                    <td class="text-success">${formatPrice(selected.bid || 0)}</td>
+                    <td class="text-danger">${formatPrice(selected.ask || 0)}</td>
                     <td>${formatSpread(spread)}</td>
                     <td>${formatBasisPercent(spreadPct)}</td>
-                    <td>${new Date(f.expiry).toLocaleDateString()}</td>
+                    <td>${new Date(selected.expiry).toLocaleDateString()}</td>
                     <td class="${days <= 3 ? 'text-danger fw-bold' : days <= 7 ? 'text-warning' : ''}">${days}d</td>
                     <td>${annualized}%</td>
-                    <td>
-                        <button class="btn btn-sm ${isSelected ? 'btn-dark' : 'btn-outline-dark'}"
-                                onclick="selectFutures('${f.instrument}')">
-                            ${isSelected ? 'Selected' : 'Select'}
-                        </button>
-                    </td>
                 </tr>
             `;
-        }).join('');
+        }
     }
 
     function updateSelectedFutures(f, spread, spreadPct) {

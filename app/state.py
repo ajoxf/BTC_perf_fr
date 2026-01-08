@@ -64,6 +64,11 @@ class TradingState:
         # Last update time
         self._last_update = datetime.utcnow()
 
+        # OKX positions (synced from exchange)
+        self._okx_positions = []
+        self._okx_balance = {}
+        self._okx_last_sync = None
+
     def update_market_data(self, spot: float, perp: float, funding: float,
                            predicted: float = None, futures: list = None,
                            spot_bid: float = 0, spot_ask: float = 0,
@@ -217,6 +222,24 @@ class TradingState:
                     'fee_per_trade': self._trading_fee,
                     'round_trip_pct': self._trading_fee * 4 * 100  # As percentage
                 }
+            }
+
+
+    def update_okx_positions(self, positions: list, balance: dict = None):
+        """Update OKX positions from exchange sync"""
+        with self._data_lock:
+            self._okx_positions = positions
+            if balance:
+                self._okx_balance = balance
+            self._okx_last_sync = datetime.utcnow()
+
+    def get_okx_positions(self) -> Dict[str, Any]:
+        """Get OKX positions and balance"""
+        with self._data_lock:
+            return {
+                'positions': self._okx_positions,
+                'balance': self._okx_balance,
+                'last_sync': self._okx_last_sync.isoformat() if self._okx_last_sync else None
             }
 
 

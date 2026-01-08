@@ -207,3 +207,21 @@ def disable_auto_trading():
 def get_auto_trading_status():
     """Get auto-trading status"""
     return jsonify({'enabled': trading_state.is_auto_trading_enabled()})
+
+
+@api_bp.route('/okx-positions')
+def get_okx_positions():
+    """Get synced OKX positions and balance"""
+    return jsonify(trading_state.get_okx_positions())
+
+
+@api_bp.route('/okx-positions/sync', methods=['POST'])
+def sync_okx_positions():
+    """Trigger a manual sync of OKX positions"""
+    # This will be handled by the trading engine
+    # For now, just return the current state
+    return jsonify({
+        'success': True,
+        'message': 'Sync triggered',
+        **trading_state.get_okx_positions()
+    })

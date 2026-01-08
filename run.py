@@ -66,6 +66,81 @@ def confirm_live_mode():
         return False
 
 
+def sync_okx_positions(client, trading_state, current_prices: dict = None):
+    """
+    Sync positions and balance from OKX.
+
+    Args:
+        client: OKX API client
+        trading_state: Shared trading state
+        current_prices: Current prices for P&L calculation
+    """
+    try:
+        # Fetch positions from OKX
+        positions_response = client.get_positions()
+        balance_response = client.get_balance('USDT')
+
+        positions = []
+        if positions_response.get('code') == '0' and positions_response.get('data'):
+            for pos in positions_response['data']:
+                if float(pos.get('pos', 0)) != 0:  # Only include non-zero positions
+                    inst_id = pos.get('instId', '')
+                    pos_size = float(pos.get('pos', 0))
+                    entry_price = float(pos.get('avgPx', 0))
+                    mark_price = float(pos.get('markPx', 0))
+                    upl = float(pos.get('upl', 0))  # Unrealized P&L
+                    margin = float(pos.get('margin', 0))
+                    leverage = float(pos.get('lever', 1))
+                    liq_price = float(pos.get('liqPx', 0)) if pos.get('liqPx') else 0
+
+                    # Determine position side
+                    pos_side = pos.get('posSide', 'net')
+                    if pos_side == 'net':
+                        side = 'long' if pos_size > 0 else 'short'
+                    else:
+                        side = pos_side
+
+                    positions.append({
+                        'instrument': inst_id,
+                        'side': side,
+                        'size': abs(pos_size),
+                        'entry_price': entry_price,
+                        'mark_price': mark_price,
+                        'unrealized_pnl': upl,
+                        'margin': margin,
+                        'leverage': leverage,
+                        'liquidation_price': liq_price,
+                        'inst_type': pos.get('instType', '')
+                    })
+
+        # Parse balance
+        balance = {}
+        if balance_response.get('code') == '0' and balance_response.get('data'):
+            for bal in balance_response['data']:
+                details = bal.get('details', [])
+                for detail in details:
+                    if detail.get('ccy') == 'USDT':
+                        balance = {
+                            'currency': 'USDT',
+                            'available': float(detail.get('availBal', 0)),
+                            'frozen': float(detail.get('frozenBal', 0)),
+                            'equity': float(detail.get('eq', 0))
+                        }
+                        break
+
+        # Update shared state
+        trading_state.update_okx_positions(positions, balance)
+
+        if positions:
+            logger.debug(f"Synced {len(positions)} OKX positions")
+
+        return positions, balance
+
+    except Exception as e:
+        logger.error(f"Failed to sync OKX positions: {e}")
+        return [], {}
+
+
 def get_most_liquid_futures(futures_list: list, min_days_to_expiry: int = 3) -> dict:
     """
     Get the most liquid futures contract.
@@ -186,8 +261,15 @@ def run_trading_engine(paper_mode: bool = True):
         # Selected futures contract (most liquid)
         selected_futures_inst = None
 
+        # Position sync interval (every 5 seconds)
+        last_position_sync = 0
+        POSITION_SYNC_INTERVAL = 5
+
         # Start data collection
         collector.start()
+
+        # Initial position sync
+        sync_okx_positions(client, trading_state)
 
         # Main trading loop
         running = True
@@ -416,6 +498,12 @@ def run_trading_engine(paper_mode: bool = True):
                             'BTC-USDT-SWAP': market_data['perp_price'],
                             selected_futures_inst: selected_futures_price
                         })
+
+                # Periodic OKX position sync (every 5 seconds)
+                current_time = time.time()
+                if current_time - last_position_sync >= POSITION_SYNC_INTERVAL:
+                    sync_okx_positions(client, trading_state)
+                    last_position_sync = current_time
 
                 time.sleep(1)
 

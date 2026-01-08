@@ -234,11 +234,64 @@
     </div>
 </div>
 
-<!-- Row 4: Positions & Trades -->
+<!-- Row 4: OKX Account & Positions -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><strong>OKX Account</strong> (Live Sync)</span>
+                <div>
+                    <span class="small text-muted me-2">Last sync: <span id="okx-last-sync">--</span></span>
+                    <button class="btn btn-sm btn-outline-dark" onclick="syncOkxPositions()">↻ Sync Now</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-3 text-center border-end">
+                        <div class="metric-label">Account Equity</div>
+                        <div class="metric-value-lg" id="okx-equity">--</div>
+                    </div>
+                    <div class="col-md-3 text-center border-end">
+                        <div class="metric-label">Available Balance</div>
+                        <div class="metric-value" id="okx-available">--</div>
+                    </div>
+                    <div class="col-md-3 text-center border-end">
+                        <div class="metric-label">Frozen Balance</div>
+                        <div class="metric-value" id="okx-frozen">--</div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="metric-label">Total Unrealized P&L</div>
+                        <div class="metric-value-lg" id="okx-total-upl">--</div>
+                    </div>
+                </div>
+                <hr>
+                <h6>Open Positions</h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Instrument</th>
+                            <th>Side</th>
+                            <th>Size</th>
+                            <th>Entry Price</th>
+                            <th>Mark Price</th>
+                            <th>Unrealized P&L</th>
+                            <th>Liq. Price</th>
+                        </tr>
+                    </thead>
+                    <tbody id="okx-positions-table">
+                        <tr><td colspan="7" class="text-center text-muted">No open positions on OKX</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row 5: Strategy Positions & Signals -->
 <div class="row">
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">Active Positions</div>
+            <div class="card-header">Strategy Positions (Internal)</div>
             <div class="card-body p-0">
                 <table class="table table-sm table-hover mb-0">
                     <thead>
@@ -589,9 +642,75 @@
         }
     }
 
+    // Fetch and display OKX positions
+    function updateOkxPositions() {
+        fetch('/api/okx-positions')
+            .then(r => r.json())
+            .then(data => {
+                // Update last sync time
+                if (data.last_sync) {
+                    const syncTime = new Date(data.last_sync);
+                    document.getElementById('okx-last-sync').textContent = syncTime.toLocaleTimeString();
+                }
+
+                // Update balance
+                if (data.balance && data.balance.currency) {
+                    document.getElementById('okx-equity').textContent = '$' + formatNumber(data.balance.equity);
+                    document.getElementById('okx-available').textContent = '$' + formatNumber(data.balance.available);
+                    document.getElementById('okx-frozen').textContent = '$' + formatNumber(data.balance.frozen);
+                }
+
+                // Update positions table
+                const tbody = document.getElementById('okx-positions-table');
+                if (!data.positions || data.positions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No open positions on OKX</td></tr>';
+                    document.getElementById('okx-total-upl').innerHTML = '<span class="text-muted">$0.00</span>';
+                } else {
+                    let totalUpl = 0;
+                    tbody.innerHTML = data.positions.map(p => {
+                        totalUpl += p.unrealized_pnl || 0;
+                        const uplClass = p.unrealized_pnl >= 0 ? 'text-success' : 'text-danger';
+                        const sideClass = p.side === 'long' ? 'text-success' : 'text-danger';
+                        return `
+                            <tr>
+                                <td><strong>${p.instrument}</strong></td>
+                                <td class="${sideClass}">${p.side.toUpperCase()}</td>
+                                <td>${p.size}</td>
+                                <td>${formatPrice(p.entry_price)}</td>
+                                <td>${formatPrice(p.mark_price)}</td>
+                                <td class="${uplClass} fw-bold">${formatPnL(p.unrealized_pnl)}</td>
+                                <td>${p.liquidation_price > 0 ? formatPrice(p.liquidation_price) : '--'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+
+                    // Update total UPL
+                    const totalUplClass = totalUpl >= 0 ? 'text-success' : 'text-danger';
+                    document.getElementById('okx-total-upl').innerHTML =
+                        `<span class="${totalUplClass}">${formatPnL(totalUpl)}</span>`;
+                }
+            })
+            .catch(console.error);
+    }
+
+    function syncOkxPositions() {
+        fetch('/api/okx-positions/sync', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                updateOkxPositions();
+            })
+            .catch(console.error);
+    }
+
+    function formatNumber(num) {
+        return (num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
     // Start updates
     startAutoRefresh(updateDashboard, 300);
     setInterval(updateFundingCountdown, 1000);
+    setInterval(updateOkxPositions, 5000);  // Update OKX positions every 5 seconds
     updateFundingCountdown();
+    updateOkxPositions();  // Initial fetch
 </script>
 {% endblock %}

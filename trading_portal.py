@@ -1081,7 +1081,20 @@ class TradingMonitor:
     def get_account_info(self) -> Dict:
         """Get OKX account info"""
         if not self.client:
-            return {}
+            return {'server': 'Not Connected', 'error': 'Client not initialized'}
+
+        # Check if credentials are configured
+        api_key = os.environ.get('OKX_API_KEY', '')
+        if not api_key or api_key == 'your_api_key_here':
+            return {
+                'server': 'OKX Demo' if self.config.get('paper_mode') else 'OKX Live',
+                'balance': 0,
+                'equity': 0,
+                'margin': 0,
+                'free_margin': 0,
+                'leverage': 1,
+                'error': 'API credentials not configured. Create .env file from .env.example'
+            }
 
         try:
             balance_response = self.client.get_balance('USDT')
@@ -1099,15 +1112,29 @@ class TradingMonitor:
                                 'leverage': 1,  # OKX reports per-position
                                 'server': 'OKX Demo' if self.config.get('paper_mode') else 'OKX Live'
                             }
-            return {}
+            # API returned error - check code
+            error_code = balance_response.get('code', '')
+            if error_code == '50111':
+                return {'server': 'Auth Error', 'error': 'Invalid API key or signature'}
+            elif error_code == '50113':
+                return {'server': 'Auth Error', 'error': 'Invalid passphrase'}
+            return {'server': 'API Error', 'error': f"Code: {error_code}"}
         except Exception as e:
-            logger.error(f"Error getting account info: {e}")
-            return {}
+            # Only log occasionally to avoid spam
+            if not hasattr(self, '_last_account_error_time') or time.time() - self._last_account_error_time > 60:
+                logger.warning(f"Account info error: {e}")
+                self._last_account_error_time = time.time()
+            return {'server': 'Error', 'error': str(e)[:50]}
 
     def get_okx_positions(self) -> List[Dict]:
         """Get OKX positions"""
         if not self.client:
             return []
+
+        # Check if credentials are configured
+        api_key = os.environ.get('OKX_API_KEY', '')
+        if not api_key or api_key == 'your_api_key_here':
+            return []  # No positions without credentials
 
         try:
             positions_response = self.client.get_positions()
@@ -1127,7 +1154,10 @@ class TradingMonitor:
                         })
             return positions
         except Exception as e:
-            logger.error(f"Error getting OKX positions: {e}")
+            # Only log occasionally to avoid spam
+            if not hasattr(self, '_last_pos_error_time') or time.time() - self._last_pos_error_time > 60:
+                logger.warning(f"Positions error: {e}")
+                self._last_pos_error_time = time.time()
             return []
 
     def get_enriched_positions(self) -> List[Dict]:
@@ -1214,7 +1244,7 @@ MONITOR_TEMPLATE = '''
         .account-item .value { font-size: 1.3rem; font-weight: 600; }
         .account-item .value.negative { color: #e74c3c; }
         .account-item .value.positive { color: #27ae60; }
-        .chart-container { height: 200px; position: relative; }
+        .chart-container { height: 350px; position: relative; }
         .asset-panel { padding: 15px; }
         .asset-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
         .asset-name { font-size: 1.3rem; font-weight: 700; }
@@ -1472,8 +1502,40 @@ MONITOR_TEMPLATE = '''
 
         <div class="card">
             <div class="card-header">
-                <span>Trade History</span>
-                <span id="trade-summary">Total P&L: $0.00 | Win Rate: 0% | Sharpe: 0.00</span>
+                <span>Portal Algo Positions</span>
+                <span id="algo-position-summary" style="font-size: 12px;"></span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Direction</th>
+                            <th>Lots</th>
+                            <th>Entry Z</th>
+                            <th>Entry Spot</th>
+                            <th>Entry Fut</th>
+                            <th>Current Spot</th>
+                            <th>Current Fut</th>
+                            <th>Unrealized P&L</th>
+                            <th>Days</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="algo-positions-table">
+                        <tr><td colspan="11" style="text-align: center; color: #888;">No algorithm positions</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Trade Journal</span>
+                <div>
+                    <span id="trade-summary" style="margin-right: 15px;">Total P&L: $0.00 | Win Rate: 0% | Sharpe: 0.00</span>
+                    <a href="/api/trades/csv" class="btn" style="background: #3498db; color: white; padding: 4px 12px; text-decoration: none; border-radius: 4px; font-size: 12px;">📥 Download CSV</a>
+                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <table>
@@ -1573,7 +1635,16 @@ MONITOR_TEMPLATE = '''
 
                     // Update account
                     if (data.account) {
-                        document.getElementById('account-server').textContent = data.account.server || '--';
+                        const serverEl = document.getElementById('account-server');
+                        serverEl.textContent = data.account.server || '--';
+                        // Show error hint if present
+                        if (data.account.error) {
+                            serverEl.title = data.account.error;
+                            serverEl.style.color = '#e74c3c';
+                        } else {
+                            serverEl.title = '';
+                            serverEl.style.color = '';
+                        }
                         document.getElementById('account-balance').textContent = '$' + (data.account.balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('account-equity').textContent = '$' + (data.account.equity || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
                         document.getElementById('account-margin').textContent = '$' + (data.account.margin || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
@@ -1600,9 +1671,49 @@ MONITOR_TEMPLATE = '''
                             document.getElementById('zscore-value').textContent = '--';
                         }
 
-                        // Signal note
+                        // Signal note with data collection status
                         if (d.signal) {
-                            document.getElementById('zscore-note').textContent = d.signal.type || '';
+                            const noteEl = document.getElementById('zscore-note');
+                            let noteText = d.signal.type || '';
+                            // Show reason for better context
+                            if (d.signal.reason && d.signal.reason.includes('Collecting data')) {
+                                noteText = d.signal.reason;
+                                noteEl.style.color = '#f39c12';  // Orange for collecting
+                            } else if (d.signal.type === 'SELL_BASIS' || d.signal.type === 'BUY_BASIS') {
+                                noteEl.style.color = '#27ae60';  // Green for entry signal
+                            } else if (d.signal.type === 'STOP_LOSS') {
+                                noteEl.style.color = '#e74c3c';  // Red for stop loss
+                            } else {
+                                noteEl.style.color = '#888';
+                            }
+                            noteEl.textContent = noteText;
+                        }
+
+                        // Data collection progress bar
+                        if (d.stats) {
+                            const count = d.stats.count || 0;
+                            const required = d.stats.required || 90;
+                            const complete = d.stats.complete || false;
+                            const pct = Math.min(100, (count / required) * 100);
+
+                            let progressEl = document.getElementById('data-progress');
+                            if (!progressEl) {
+                                // Create progress element if not exists
+                                const container = document.querySelector('.zscore-display');
+                                if (container) {
+                                    progressEl = document.createElement('div');
+                                    progressEl.id = 'data-progress';
+                                    progressEl.style.cssText = 'font-size: 10px; color: #888; margin-top: 5px;';
+                                    container.appendChild(progressEl);
+                                }
+                            }
+                            if (progressEl) {
+                                if (!complete) {
+                                    progressEl.innerHTML = `<span style="color:#f39c12">Data: ${count}/${required} (${pct.toFixed(0)}%)</span> <progress value="${count}" max="${required}" style="width:80px;height:8px;"></progress>`;
+                                } else {
+                                    progressEl.innerHTML = `<span style="color:#27ae60">✓ Data ready (${count} points)</span>`;
+                                }
+                            }
                         }
 
                         // Hurst
@@ -1699,6 +1810,37 @@ MONITOR_TEMPLATE = '''
                         tradesTable.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">No trades</td></tr>';
                     }
 
+                    // Update algo positions table
+                    const algoTable = document.getElementById('algo-positions-table');
+                    if (data.algo_positions && data.algo_positions.length > 0) {
+                        algoTable.innerHTML = data.algo_positions.map(p => {
+                            const entryDate = p.entry_date ? new Date(p.entry_date) : null;
+                            const days = entryDate ? Math.floor((new Date() - entryDate) / (1000 * 60 * 60 * 24)) : 0;
+                            const unrealizedPnl = p.unrealized_pnl || 0;
+                            return `
+                            <tr>
+                                <td>${p.asset || '--'}</td>
+                                <td class="${p.direction === 'Short Spread' ? 'type-sell' : 'type-buy'}">${p.direction || '--'}</td>
+                                <td>${p.lot_size || 0.01}</td>
+                                <td>${(p.entry_zscore || 0).toFixed(2)}σ</td>
+                                <td>${(p.entry_spot_price || 0).toFixed(2)}</td>
+                                <td>${(p.entry_futures_price || 0).toFixed(2)}</td>
+                                <td>${(p.current_spot || 0).toFixed(2)}</td>
+                                <td>${(p.current_futures || 0).toFixed(2)}</td>
+                                <td class="${unrealizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">$${unrealizedPnl.toFixed(2)}</td>
+                                <td>${days}</td>
+                                <td><button onclick="closeAlgoPosition('${p.asset}')" style="background: #e74c3c; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer;">Close</button></td>
+                            </tr>
+                        `}).join('');
+
+                        // Update summary
+                        const totalUnrealized = data.algo_positions.reduce((sum, p) => sum + (p.unrealized_pnl || 0), 0);
+                        document.getElementById('algo-position-summary').textContent = `${data.algo_positions.length} position(s) | Unrealized: $${totalUnrealized.toFixed(2)}`;
+                    } else {
+                        algoTable.innerHTML = '<tr><td colspan="11" style="text-align: center; color: #888;">No algorithm positions</td></tr>';
+                        document.getElementById('algo-position-summary').textContent = '';
+                    }
+
                     // Update trade summary
                     if (data.trade_summary) {
                         const s = data.trade_summary;
@@ -1740,6 +1882,23 @@ MONITOR_TEMPLATE = '''
             if (confirm('Clear all trades? This cannot be undone.')) {
                 fetch('/api/clear_trades', { method: 'POST' })
                     .then(() => location.reload());
+            }
+        }
+
+        function closeAlgoPosition(assetKey) {
+            if (confirm(`Close position for ${assetKey}?`)) {
+                fetch('/api/close_position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asset_key: assetKey })
+                }).then(r => r.json())
+                  .then(data => {
+                      if (data.success) {
+                          alert('Position closed');
+                      } else {
+                          alert('Failed to close position');
+                      }
+                  });
             }
         }
 
@@ -1998,6 +2157,7 @@ def get_data():
         'account': monitor.get_account_info(),
         'okx_positions': monitor.get_okx_positions(),
         'positions': monitor.get_enriched_positions(),
+        'algo_positions': monitor.get_enriched_positions(),  # Algorithm-managed positions
         'zscore_history': list(monitor.zscore_history),
         'price_history': list(monitor.price_history),
         'trade_history': db.get_trades(limit=100),
@@ -2068,6 +2228,68 @@ def api_close_position():
 
     success = monitor.manual_close_position(asset)
     return jsonify({'success': success})
+
+
+@app.route('/api/trades/csv')
+def api_trades_csv():
+    """Download trade history as CSV"""
+    import csv
+    import io
+
+    trades = db.get_trades(limit=10000)
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row matching MT5 version
+    writer.writerow([
+        '#', 'Direction', 'Lots', 'Entry Date', 'Exit Date', 'Days',
+        'Entry Z', 'Exit Z', 'Entry Spot', 'Entry Fut', 'Exit Spot', 'Exit Fut',
+        'Spot P&L', 'Futures P&L', 'Gross P&L', 'Swap', 'Comm', 'Spread', 'Net P&L', 'Return %', 'Status'
+    ])
+
+    # Data rows
+    for i, t in enumerate(trades, 1):
+        writer.writerow([
+            i,
+            t.get('direction', ''),
+            t.get('lot_size', 0.01),
+            t.get('entry_date', ''),
+            t.get('exit_date', ''),
+            t.get('days_held', 0),
+            f"{t.get('entry_zscore', 0):.2f}" if t.get('entry_zscore') else '',
+            f"{t.get('exit_zscore', 0):.2f}" if t.get('exit_zscore') else '',
+            f"{t.get('entry_spot_price', 0):.2f}" if t.get('entry_spot_price') else '',
+            f"{t.get('entry_futures_price', 0):.2f}" if t.get('entry_futures_price') else '',
+            f"{t.get('exit_spot_price', 0):.2f}" if t.get('exit_spot_price') else '',
+            f"{t.get('exit_futures_price', 0):.2f}" if t.get('exit_futures_price') else '',
+            f"{t.get('spot_pnl', 0):.2f}",
+            f"{t.get('futures_pnl', 0):.2f}",
+            f"{t.get('gross_pnl', 0):.2f}",
+            f"{t.get('swap_cost', 0):.2f}",
+            f"{t.get('commission', 0):.2f}",
+            f"{t.get('spread_cost', 0):.2f}",
+            f"{t.get('net_pnl', 0):.2f}",
+            f"{t.get('return_pct', 0):.2f}%",
+            t.get('status', '')
+        ])
+
+    # Generate response
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=trade_history_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'}
+    )
+
+
+@app.route('/api/algo_positions')
+def api_algo_positions():
+    """Get algorithm-managed positions"""
+    return jsonify({
+        'positions': monitor.get_enriched_positions()
+    })
 
 
 # ==================== MAIN ====================

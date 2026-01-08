@@ -222,7 +222,7 @@ class BasisStrategy(BaseStrategy):
                 annualized = 0
 
             contracts.append(FuturesContract(
-                inst_id=fut['inst_id'],
+                inst_id=fut.get('instrument') or fut.get('inst_id'),
                 expiry=expiry,
                 days_to_expiry=days_to_expiry,
                 last_price=price,

@@ -49,6 +49,8 @@ class OKXWebSocket:
         self._private_thread: Optional[threading.Thread] = None
 
         self._running = False
+        self._public_connected = False
+        self._private_connected = False
         self._callbacks: Dict[str, List[Callable]] = {}
         self._subscriptions: List[Dict] = []
 
@@ -71,6 +73,7 @@ class OKXWebSocket:
     def _on_open_public(self, ws):
         """Handle public WebSocket open"""
         logger.info("Public WebSocket connected")
+        self._public_connected = True
         # Resubscribe to channels
         for sub in self._subscriptions:
             if sub.get('channel') in ['tickers', 'funding-rate']:
@@ -105,6 +108,7 @@ class OKXWebSocket:
         if data.get('event') == 'login':
             if data.get('code') == '0':
                 logger.info("Private WebSocket authenticated")
+                self._private_connected = True
                 # Subscribe to private channels
                 for sub in self._subscriptions:
                     if sub.get('channel') in ['orders', 'positions', 'account']:
@@ -155,6 +159,8 @@ class OKXWebSocket:
     def _on_close(self, ws, close_status_code, close_msg):
         """Handle WebSocket close"""
         logger.warning(f"WebSocket closed: {close_status_code} - {close_msg}")
+        self._public_connected = False
+        self._private_connected = False
         if self._running:
             logger.info("Attempting to reconnect...")
             time.sleep(5)
@@ -169,13 +175,19 @@ class OKXWebSocket:
 
     def _send_public(self, data: Dict):
         """Send message on public WebSocket"""
-        if self._public_ws:
-            self._public_ws.send(json.dumps(data))
+        if self._public_ws and self._public_connected:
+            try:
+                self._public_ws.send(json.dumps(data))
+            except Exception as e:
+                logger.debug(f"Failed to send public message: {e}")
 
     def _send_private(self, data: Dict):
         """Send message on private WebSocket"""
-        if self._private_ws:
-            self._private_ws.send(json.dumps(data))
+        if self._private_ws and self._private_connected:
+            try:
+                self._private_ws.send(json.dumps(data))
+            except Exception as e:
+                logger.debug(f"Failed to send private message: {e}")
 
     def _start_public(self):
         """Start public WebSocket connection"""

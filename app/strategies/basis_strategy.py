@@ -7,7 +7,7 @@ Concept:
 - Exit when basis reverts to mean
 - Capture the convergence as futures approach expiry
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from loguru import logger
@@ -193,7 +193,7 @@ class BasisStrategy(BaseStrategy):
         futures_list: List[Dict]
     ) -> List[FuturesContract]:
         """Analyze available futures contracts"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         contracts = []
 
         for fut in futures_list:

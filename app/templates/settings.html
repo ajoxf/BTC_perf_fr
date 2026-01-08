@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - BTC Trading System{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h4><i class="bi bi-gear"></i> Settings</h4>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <!-- API Credentials -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-key"></i> API Credentials
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Set credentials via environment variables:
+                    <ul class="mb-0 mt-2">
+                        <li><code>OKX_API_KEY</code></li>
+                        <li><code>OKX_SECRET_KEY</code></li>
+                        <li><code>OKX_PASSPHRASE</code></li>
+                    </ul>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="demo-mode" checked>
+                    <label class="form-check-label" for="demo-mode">Demo/Paper Trading Mode</label>
+                </div>
+                <div id="credentials-status">
+                    <span class="badge bg-warning">Checking...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risk Settings -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-shield"></i> Risk Management
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Max Position Size (USD)</label>
+                    <input type="number" class="form-control" id="max-position" value="10000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Max Total Exposure (USD)</label>
+                    <input type="number" class="form-control" id="max-exposure" value="25000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Max Loss Per Trade (USD)</label>
+                    <input type="number" class="form-control" id="max-loss-trade" value="500">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Max Daily Loss (USD)</label>
+                    <input type="number" class="form-control" id="max-daily-loss" value="1000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Hurst Threshold</label>
+                    <input type="number" class="form-control" id="hurst-threshold" value="0.5" step="0.05" min="0" max="1">
+                    <small class="text-muted">Only trade when Hurst < threshold (mean-reverting regime)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <!-- Basis Strategy Settings -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-arrows-expand"></i> Basis Strategy
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="basis-enabled" checked>
+                    <label class="form-check-label" for="basis-enabled">Enabled</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Lookback Period (hours)</label>
+                    <input type="number" class="form-control" id="basis-lookback" value="168">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Entry Z-Score</label>
+                    <input type="number" class="form-control" id="basis-entry-zscore" value="2.0" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Exit Z-Score</label>
+                    <input type="number" class="form-control" id="basis-exit-zscore" value="0.5" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Stop Loss (%)</label>
+                    <input type="number" class="form-control" id="basis-stop-loss" value="2" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Time Stop (hours)</label>
+                    <input type="number" class="form-control" id="basis-time-stop" value="168">
+                </div>
+            </div>
+        </div>
+
+        <!-- Funding Strategy Settings -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> Funding Strategy
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="funding-enabled" checked>
+                    <label class="form-check-label" for="funding-enabled">Enabled</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Lookback Periods (funding settlements)</label>
+                    <input type="number" class="form-control" id="funding-lookback" value="21">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Min Rate Threshold (%)</label>
+                    <input type="number" class="form-control" id="funding-min-rate" value="0.05" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Entry Z-Score</label>
+                    <input type="number" class="form-control" id="funding-entry-zscore" value="2.0" step="0.1">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Min Settlements</label>
+                    <input type="number" class="form-control" id="funding-min-settlements" value="1">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Max Settlements</label>
+                    <input type="number" class="form-control" id="funding-max-settlements" value="6">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <button class="btn btn-primary me-2" onclick="saveSettings()">
+            <i class="bi bi-save"></i> Save Settings
+        </button>
+        <button class="btn btn-warning me-2" onclick="resetPaperTrading()">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset Paper Trading
+        </button>
+        <button class="btn btn-secondary" onclick="loadSettings()">
+            <i class="bi bi-arrow-clockwise"></i> Reload
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function loadSettings() {
+        fetch('/settings/api/config')
+            .then(r => r.json())
+            .then(config => {
+                // Credentials status
+                const status = document.getElementById('credentials-status');
+                if (config.okx && config.okx.has_credentials) {
+                    status.innerHTML = '<span class="badge bg-success">Credentials configured</span>';
+                } else {
+                    status.innerHTML = '<span class="badge bg-danger">No credentials</span>';
+                }
+
+                document.getElementById('demo-mode').checked = config.okx?.demo_trading !== false;
+
+                // Risk settings
+                if (config.risk) {
+                    document.getElementById('max-position').value = config.risk.max_position_usd || 10000;
+                    document.getElementById('max-exposure').value = config.risk.max_total_exposure_usd || 25000;
+                    document.getElementById('max-loss-trade').value = config.risk.max_loss_per_trade_usd || 500;
+                    document.getElementById('max-daily-loss').value = config.risk.max_daily_loss_usd || 1000;
+                    document.getElementById('hurst-threshold').value = config.risk.hurst_threshold || 0.5;
+                }
+
+                // Basis strategy
+                if (config.strategies?.basis) {
+                    document.getElementById('basis-enabled').checked = config.strategies.basis.enabled !== false;
+                    document.getElementById('basis-lookback').value = config.strategies.basis.lookback_period || 168;
+                    document.getElementById('basis-entry-zscore').value = config.strategies.basis.entry_zscore || 2.0;
+                    document.getElementById('basis-exit-zscore').value = config.strategies.basis.exit_zscore || 0.5;
+                    document.getElementById('basis-stop-loss').value = (config.strategies.basis.stop_loss_pct || 0.02) * 100;
+                    document.getElementById('basis-time-stop').value = config.strategies.basis.time_stop_hours || 168;
+                }
+
+                // Funding strategy
+                if (config.strategies?.funding) {
+                    document.getElementById('funding-enabled').checked = config.strategies.funding.enabled !== false;
+                    document.getElementById('funding-lookback').value = config.strategies.funding.lookback_periods || 21;
+                    document.getElementById('funding-min-rate').value = (config.strategies.funding.min_rate_threshold || 0.0005) * 100;
+                    document.getElementById('funding-entry-zscore').value = config.strategies.funding.entry_zscore || 2.0;
+                    document.getElementById('funding-min-settlements').value = config.strategies.funding.min_settlements || 1;
+                    document.getElementById('funding-max-settlements').value = config.strategies.funding.max_settlements || 6;
+                }
+            });
+    }
+
+    function saveSettings() {
+        const config = {
+            strategies: {
+                basis: {
+                    enabled: document.getElementById('basis-enabled').checked,
+                    lookback_period: parseInt(document.getElementById('basis-lookback').value),
+                    entry_zscore: parseFloat(document.getElementById('basis-entry-zscore').value),
+                    exit_zscore: parseFloat(document.getElementById('basis-exit-zscore').value),
+                    stop_loss_pct: parseFloat(document.getElementById('basis-stop-loss').value) / 100,
+                    time_stop_hours: parseInt(document.getElementById('basis-time-stop').value)
+                },
+                funding: {
+                    enabled: document.getElementById('funding-enabled').checked,
+                    lookback_periods: parseInt(document.getElementById('funding-lookback').value),
+                    min_rate_threshold: parseFloat(document.getElementById('funding-min-rate').value) / 100,
+                    entry_zscore: parseFloat(document.getElementById('funding-entry-zscore').value),
+                    min_settlements: parseInt(document.getElementById('funding-min-settlements').value),
+                    max_settlements: parseInt(document.getElementById('funding-max-settlements').value)
+                }
+            },
+            risk: {
+                max_position_usd: parseFloat(document.getElementById('max-position').value),
+                max_total_exposure_usd: parseFloat(document.getElementById('max-exposure').value),
+                max_loss_per_trade_usd: parseFloat(document.getElementById('max-loss-trade').value),
+                max_daily_loss_usd: parseFloat(document.getElementById('max-daily-loss').value),
+                hurst_threshold: parseFloat(document.getElementById('hurst-threshold').value)
+            }
+        };
+
+        fetch('/settings/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Settings saved successfully');
+            } else {
+                alert('Error saving settings: ' + data.error);
+            }
+        });
+    }
+
+    function resetPaperTrading() {
+        if (confirm('Are you sure you want to reset paper trading? This will clear all simulated positions and P&L.')) {
+            fetch('/settings/api/reset-paper', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message);
+                });
+        }
+    }
+
+    loadSettings();
+</script>
+{% endblock %}

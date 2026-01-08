@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Signals - BTC Trading System{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h4><i class="bi bi-graph-up"></i> Signal Visualization</h4>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Basis Z-Score</div>
+            <div class="card-body">
+                <canvas id="basis-chart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Funding Rate Z-Score</div>
+            <div class="card-body">
+                <canvas id="funding-chart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">Funding Rate History</div>
+            <div class="card-body">
+                <canvas id="funding-history-chart" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">Basis History</div>
+            <div class="card-body">
+                <canvas id="basis-history-chart" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const chartConfig = {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            x: {
+                grid: { color: 'rgba(255,255,255,0.1)' },
+                ticks: { color: '#888' }
+            },
+            y: {
+                grid: { color: 'rgba(255,255,255,0.1)' },
+                ticks: { color: '#888' }
+            }
+        },
+        plugins: {
+            legend: { labels: { color: '#eaeaea' } }
+        }
+    };
+
+    // Basis Z-Score chart
+    const basisCtx = document.getElementById('basis-chart').getContext('2d');
+    const basisChart = new Chart(basisCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Z-Score',
+                    data: [],
+                    borderColor: '#00ff88',
+                    backgroundColor: 'rgba(0,255,136,0.1)',
+                    tension: 0.3
+                },
+                {
+                    label: 'Entry Threshold (+)',
+                    data: [],
+                    borderColor: '#ffa502',
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                },
+                {
+                    label: 'Entry Threshold (-)',
+                    data: [],
+                    borderColor: '#ffa502',
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: chartConfig
+    });
+
+    // Funding Z-Score chart
+    const fundingCtx = document.getElementById('funding-chart').getContext('2d');
+    const fundingChart = new Chart(fundingCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Z-Score',
+                    data: [],
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52,152,219,0.1)',
+                    tension: 0.3
+                },
+                {
+                    label: 'Entry Threshold (+)',
+                    data: [],
+                    borderColor: '#ffa502',
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                },
+                {
+                    label: 'Entry Threshold (-)',
+                    data: [],
+                    borderColor: '#ffa502',
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: chartConfig
+    });
+
+    // Funding Rate History chart
+    const fundingHistCtx = document.getElementById('funding-history-chart').getContext('2d');
+    const fundingHistChart = new Chart(fundingHistCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Funding Rate (%)',
+                data: [],
+                backgroundColor: []
+            }]
+        },
+        options: {
+            ...chartConfig,
+            scales: {
+                ...chartConfig.scales,
+                y: {
+                    ...chartConfig.scales.y,
+                    ticks: {
+                        ...chartConfig.scales.y.ticks,
+                        callback: value => (value * 100).toFixed(3) + '%'
+                    }
+                }
+            }
+        }
+    });
+
+    // Basis History chart
+    const basisHistCtx = document.getElementById('basis-history-chart').getContext('2d');
+    const basisHistChart = new Chart(basisHistCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Basis (%)',
+                data: [],
+                borderColor: '#9b59b6',
+                backgroundColor: 'rgba(155,89,182,0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            ...chartConfig,
+            scales: {
+                ...chartConfig.scales,
+                y: {
+                    ...chartConfig.scales.y,
+                    ticks: {
+                        ...chartConfig.scales.y.ticks,
+                        callback: value => (value * 100).toFixed(2) + '%'
+                    }
+                }
+            }
+        }
+    });
+
+    function updateCharts() {
+        // Fetch funding history
+        fetch('/api/funding-history')
+            .then(r => r.json())
+            .then(data => {
+                const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString()).reverse();
+                const rates = data.map(d => d.funding_rate).reverse();
+                const zscores = data.map(d => d.zscore || 0).reverse();
+
+                // Update funding history chart
+                fundingHistChart.data.labels = labels.slice(-50);
+                fundingHistChart.data.datasets[0].data = rates.slice(-50);
+                fundingHistChart.data.datasets[0].backgroundColor = rates.slice(-50).map(r =>
+                    r >= 0 ? 'rgba(0,255,136,0.7)' : 'rgba(255,71,87,0.7)'
+                );
+                fundingHistChart.update();
+
+                // Update funding z-score chart
+                fundingChart.data.labels = labels.slice(-50);
+                fundingChart.data.datasets[0].data = zscores.slice(-50);
+                fundingChart.data.datasets[1].data = new Array(50).fill(2);
+                fundingChart.data.datasets[2].data = new Array(50).fill(-2);
+                fundingChart.update();
+            });
+
+        // Fetch basis history
+        fetch('/api/basis-history')
+            .then(r => r.json())
+            .then(data => {
+                const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString()).reverse();
+                const basis = data.map(d => d.basis_pct).reverse();
+                const zscores = data.map(d => d.zscore || 0).reverse();
+
+                // Update basis history chart
+                basisHistChart.data.labels = labels.slice(-50);
+                basisHistChart.data.datasets[0].data = basis.slice(-50);
+                basisHistChart.update();
+
+                // Update basis z-score chart
+                basisChart.data.labels = labels.slice(-50);
+                basisChart.data.datasets[0].data = zscores.slice(-50);
+                basisChart.data.datasets[1].data = new Array(50).fill(2);
+                basisChart.data.datasets[2].data = new Array(50).fill(-2);
+                basisChart.update();
+            });
+    }
+
+    updateCharts();
+    setInterval(updateCharts, 10000);
+</script>
+{% endblock %}

@@ -1,0 +1,52 @@
+"""
+BTC Basis & Funding Rate Trading System
+Flask application factory
+"""
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+import os
+import yaml
+
+db = SQLAlchemy()
+migrate = Migrate()
+
+
+def create_app(config_path: str = None) -> Flask:
+    """Create and configure the Flask application"""
+    app = Flask(__name__)
+
+    # Load configuration
+    config_file = config_path or os.environ.get('CONFIG_PATH', 'config.yaml')
+    if os.path.exists(config_file):
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+    else:
+        config = {}
+
+    # Flask config
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{config.get('database', {}).get('path', 'instance/trading.db')}"
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    # Store trading config
+    app.config['TRADING_CONFIG'] = config
+
+    # Initialize extensions
+    db.init_app(app)
+    migrate.init_app(app, db)
+
+    # Register blueprints
+    from app.routes.dashboard import dashboard_bp
+    from app.routes.api_routes import api_bp
+    from app.routes.settings import settings_bp
+
+    app.register_blueprint(dashboard_bp)
+    app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(settings_bp, url_prefix='/settings')
+
+    # Create database tables
+    with app.app_context():
+        db.create_all()
+
+    return app

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Positions - BTC Trading System{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h4><i class="bi bi-wallet2"></i> Active Positions</h4>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="active-positions">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Strategy</th>
+                        <th>Opened</th>
+                        <th>Spot Instrument</th>
+                        <th>Derivative</th>
+                        <th>Entry Spot</th>
+                        <th>Entry Deriv</th>
+                        <th>Size (USD)</th>
+                        <th>Unrealized P&L</th>
+                        <th>Funding</th>
+                        <th>Net P&L</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="12" class="text-center text-muted">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <h4><i class="bi bi-archive"></i> Position History</h4>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="position-history">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Strategy</th>
+                        <th>Opened</th>
+                        <th>Closed</th>
+                        <th>Duration</th>
+                        <th>Exit Reason</th>
+                        <th>Realized P&L</th>
+                        <th>Funding</th>
+                        <th>Net P&L</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="9" class="text-center text-muted">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function loadPositions() {
+        // Active positions
+        fetch('/api/positions')
+            .then(r => r.json())
+            .then(positions => {
+                const tbody = document.querySelector('#active-positions tbody');
+                if (positions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">No active positions</td></tr>';
+                } else {
+                    tbody.innerHTML = positions.map(p => {
+                        const notional = (p.spot_size || 0) * (p.entry_spot_price || 0);
+                        const netPnl = (p.unrealized_pnl || 0) + (p.total_funding || 0);
+                        return `
+                            <tr>
+                                <td>${p.id}</td>
+                                <td><span class="badge bg-primary">${p.strategy}</span></td>
+                                <td>${new Date(p.opened_at).toLocaleString()}</td>
+                                <td>${p.spot_instrument}</td>
+                                <td>${p.derivative_instrument}</td>
+                                <td>${formatPrice(p.entry_spot_price)}</td>
+                                <td>${formatPrice(p.entry_derivative_price)}</td>
+                                <td>${formatPrice(notional)}</td>
+                                <td>${formatPnL(p.unrealized_pnl)}</td>
+                                <td>${formatPnL(p.total_funding)}</td>
+                                <td>${formatPnL(netPnl)}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="closePosition(${p.id})">
+                                        Close
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            });
+
+        // Position history
+        fetch('/api/positions/history')
+            .then(r => r.json())
+            .then(positions => {
+                const tbody = document.querySelector('#position-history tbody');
+                if (positions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No closed positions</td></tr>';
+                } else {
+                    tbody.innerHTML = positions.map(p => {
+                        const opened = new Date(p.opened_at);
+                        const closed = p.closed_at ? new Date(p.closed_at) : null;
+                        const duration = closed ? Math.round((closed - opened) / (1000 * 60 * 60)) + 'h' : '-';
+                        return `
+                            <tr class="${p.net_pnl >= 0 ? 'bg-success-subtle' : 'bg-danger-subtle'}">
+                                <td>${p.id}</td>
+                                <td><span class="badge bg-secondary">${p.strategy}</span></td>
+                                <td>${opened.toLocaleString()}</td>
+                                <td>${closed ? closed.toLocaleString() : '-'}</td>
+                                <td>${duration}</td>
+                                <td>${p.exit_reason || '-'}</td>
+                                <td>${formatPnL(p.realized_pnl)}</td>
+                                <td>${formatPnL(p.total_funding)}</td>
+                                <td>${formatPnL(p.net_pnl)}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            });
+    }
+
+    function closePosition(positionId) {
+        if (confirm('Are you sure you want to close this position?')) {
+            fetch(`/api/position/${positionId}/close`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        loadPositions();
+                    }
+                });
+        }
+    }
+
+    loadPositions();
+    setInterval(loadPositions, 5000);
+</script>
+{% endblock %}

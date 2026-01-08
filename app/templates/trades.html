@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Trades - BTC Trading System{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h4><i class="bi bi-journal-text"></i> Trade Journal</h4>
+        <div>
+            <select class="form-select form-select-sm d-inline-block w-auto me-2" id="filter-strategy">
+                <option value="">All Strategies</option>
+                <option value="basis">Basis</option>
+                <option value="funding">Funding</option>
+            </select>
+            <select class="form-select form-select-sm d-inline-block w-auto" id="filter-type">
+                <option value="">All Types</option>
+                <option value="entry">Entry</option>
+                <option value="exit">Exit</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="trades-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Time</th>
+                        <th>Strategy</th>
+                        <th>Type</th>
+                        <th>Spot Side</th>
+                        <th>Spot Price</th>
+                        <th>Deriv Side</th>
+                        <th>Deriv Price</th>
+                        <th>Signal</th>
+                        <th>Signal Type</th>
+                        <th>Realized P&L</th>
+                        <th>Funding</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="12" class="text-center text-muted">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Trade Statistics</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="metric-label">Total Trades</div>
+                        <div class="metric-value" id="stat-total">0</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-label">Win Rate</div>
+                        <div class="metric-value" id="stat-winrate">0%</div>
+                    </div>
+                    <div class="col-6 mt-3">
+                        <div class="metric-label">Avg Win</div>
+                        <div class="metric-value text-success" id="stat-avgwin">$0</div>
+                    </div>
+                    <div class="col-6 mt-3">
+                        <div class="metric-label">Avg Loss</div>
+                        <div class="metric-value text-danger" id="stat-avgloss">$0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">P&L by Strategy</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6 text-center">
+                        <div class="metric-label">Basis Strategy</div>
+                        <div class="metric-value" id="pnl-basis">$0</div>
+                    </div>
+                    <div class="col-6 text-center">
+                        <div class="metric-label">Funding Strategy</div>
+                        <div class="metric-value" id="pnl-funding">$0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allTrades = [];
+
+    function loadTrades() {
+        fetch('/api/trades')
+            .then(r => r.json())
+            .then(trades => {
+                allTrades = trades;
+                renderTrades();
+                updateStats();
+            });
+    }
+
+    function renderTrades() {
+        const strategyFilter = document.getElementById('filter-strategy').value;
+        const typeFilter = document.getElementById('filter-type').value;
+
+        let filtered = allTrades;
+        if (strategyFilter) {
+            filtered = filtered.filter(t => t.strategy === strategyFilter);
+        }
+        if (typeFilter) {
+            filtered = filtered.filter(t => t.trade_type === typeFilter);
+        }
+
+        const tbody = document.querySelector('#trades-table tbody');
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">No trades found</td></tr>';
+        } else {
+            tbody.innerHTML = filtered.map(t => `
+                <tr class="${t.trade_type === 'exit' ? (t.realized_pnl >= 0 ? 'bg-success-subtle' : 'bg-danger-subtle') : ''}">
+                    <td>${t.id}</td>
+                    <td>${new Date(t.timestamp).toLocaleString()}</td>
+                    <td><span class="badge bg-primary">${t.strategy}</span></td>
+                    <td><span class="badge ${t.trade_type === 'entry' ? 'bg-info' : 'bg-warning'}">${t.trade_type}</span></td>
+                    <td>${t.spot_side || '-'}</td>
+                    <td>${t.spot_price ? formatPrice(t.spot_price) : '-'}</td>
+                    <td>${t.derivative_side || '-'}</td>
+                    <td>${t.derivative_price ? formatPrice(t.derivative_price) : '-'}</td>
+                    <td>${t.signal_value ? t.signal_value.toFixed(3) : '-'}</td>
+                    <td>${t.signal_type || '-'}</td>
+                    <td>${t.realized_pnl !== null ? formatPnL(t.realized_pnl) : '-'}</td>
+                    <td>${t.funding_collected !== null ? formatPnL(t.funding_collected) : '-'}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    function updateStats() {
+        const exits = allTrades.filter(t => t.trade_type === 'exit' && t.realized_pnl !== null);
+        const wins = exits.filter(t => t.realized_pnl > 0);
+        const losses = exits.filter(t => t.realized_pnl < 0);
+
+        document.getElementById('stat-total').textContent = exits.length;
+        document.getElementById('stat-winrate').textContent = exits.length > 0
+            ? ((wins.length / exits.length) * 100).toFixed(1) + '%'
+            : '0%';
+
+        const avgWin = wins.length > 0
+            ? wins.reduce((s, t) => s + t.realized_pnl, 0) / wins.length
+            : 0;
+        const avgLoss = losses.length > 0
+            ? losses.reduce((s, t) => s + t.realized_pnl, 0) / losses.length
+            : 0;
+
+        document.getElementById('stat-avgwin').textContent = formatPrice(avgWin);
+        document.getElementById('stat-avgloss').textContent = formatPrice(Math.abs(avgLoss));
+
+        // P&L by strategy
+        const basisTrades = exits.filter(t => t.strategy === 'basis');
+        const fundingTrades = exits.filter(t => t.strategy === 'funding');
+
+        const basisPnl = basisTrades.reduce((s, t) => s + (t.realized_pnl || 0) + (t.funding_collected || 0), 0);
+        const fundingPnl = fundingTrades.reduce((s, t) => s + (t.realized_pnl || 0) + (t.funding_collected || 0), 0);
+
+        document.getElementById('pnl-basis').innerHTML = formatPnL(basisPnl);
+        document.getElementById('pnl-funding').innerHTML = formatPnL(fundingPnl);
+    }
+
+    document.getElementById('filter-strategy').addEventListener('change', renderTrades);
+    document.getElementById('filter-type').addEventListener('change', renderTrades);
+
+    loadTrades();
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+# BTC Basis & Funding Rate Trading System Configuration
+
+okx:
+  demo_trading: true
+  rate_limit_per_second: 10
+
+strategies:
+  basis:
+    enabled: true
+    lookback_period: 168       # 7 days in hours
+    entry_zscore: 2.0          # Enter when z-score exceeds this
+    exit_zscore: 0.5           # Exit when z-score falls below this
+    max_position_usd: 10000    # Maximum position size
+    stop_loss_pct: 0.02        # 2% stop loss
+    time_stop_hours: 168       # 7 day max hold time
+
+  funding:
+    enabled: true
+    lookback_periods: 21       # 21 funding periods (7 days)
+    min_rate_threshold: 0.0005 # 0.05% minimum funding rate
+    entry_zscore: 2.0          # Enter when z-score exceeds this
+    exit_zscore: 0.5           # Exit when z-score falls below this
+    max_position_usd: 10000    # Maximum position size
+    min_settlements: 1         # Minimum settlements before exit
+    max_settlements: 6         # Maximum settlements (2 days)
+
+risk:
+  max_total_exposure_usd: 25000  # Maximum total exposure
+  max_loss_per_trade_usd: 500    # Maximum loss per trade
+  max_daily_loss_usd: 1000       # Maximum daily loss
+  hurst_threshold: 0.5           # Only trade when Hurst < 0.5
+
+fees:
+  spot_maker_fee: 0.0008     # 0.08%
+  spot_taker_fee: 0.001      # 0.10%
+  futures_maker_fee: 0.0002  # 0.02%
+  futures_taker_fee: 0.0005  # 0.05%
+
+database:
+  path: instance/trading.db
+
+logging:
+  level: INFO
+  file: logs/trading.log

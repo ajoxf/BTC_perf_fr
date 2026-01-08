@@ -9,7 +9,11 @@ import argparse
 import threading
 import signal
 from datetime import datetime
+from dotenv import load_dotenv
 from loguru import logger
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logger.remove()

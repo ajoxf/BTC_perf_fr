@@ -181,6 +181,39 @@ class OKXClient:
                 ))
         return tickers
 
+    def get_candles(self, inst_id: str, bar: str = '1m', limit: int = 100) -> List[Dict]:
+        """
+        Get historical candlestick data.
+
+        Args:
+            inst_id: Instrument ID (e.g., 'BTC-USDT', 'BTC-USDT-250117')
+            bar: Bar size - 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 1D, etc.
+            limit: Number of candles to fetch (max 300)
+
+        Returns:
+            List of candle dicts with: timestamp, open, high, low, close, volume
+        """
+        result = self._request('GET', '/api/v5/market/candles', {
+            'instId': inst_id,
+            'bar': bar,
+            'limit': str(min(limit, 300))
+        })
+
+        candles = []
+        if result.get('code') == '0' and result.get('data'):
+            # OKX returns: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+            for d in result['data']:
+                candles.append({
+                    'timestamp': datetime.fromtimestamp(int(d[0]) / 1000, tz=timezone.utc),
+                    'open': float(d[1]),
+                    'high': float(d[2]),
+                    'low': float(d[3]),
+                    'close': float(d[4]),
+                    'volume': float(d[5])
+                })
+        # Reverse to get chronological order (oldest first)
+        return list(reversed(candles))
+
     def get_instruments(self, inst_type: str, underlying: str = None) -> List[Instrument]:
         """Get available instruments"""
         params = {'instType': inst_type}

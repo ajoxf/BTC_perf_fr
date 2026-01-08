@@ -487,12 +487,82 @@ class TradingMonitor:
             logger.info(f"Loaded open position: {trade['trade_id']} ({trade['direction']})")
 
     def _load_spread_history(self):
-        """Load historical spread data"""
+        """Load historical spread data from database, then bootstrap from OKX if needed"""
+        # First load from database
         history = self.db.get_price_history(self.config.get('asset_name', 'BTC'), limit=2000)
         for h in history:
             if h['spread'] is not None:
                 self.spread_cache.append(h['spread'])
-        logger.info(f"Loaded {len(self.spread_cache)} historical spread points")
+        logger.info(f"Loaded {len(self.spread_cache)} historical spread points from database")
+
+        # Check if we need more data
+        lookback = self.config.get('lookback_period', 90)
+        unit = self.config.get('lookback_unit', 'minutes')
+        required = lookback if unit == 'minutes' else lookback * 24
+
+        if len(self.spread_cache) < required:
+            logger.info(f"Need {required} points, have {len(self.spread_cache)}. Bootstrapping from OKX...")
+            self._bootstrap_from_okx(required - len(self.spread_cache))
+
+    def _bootstrap_from_okx(self, points_needed: int):
+        """Fetch historical candle data from OKX to bootstrap spread calculations"""
+        try:
+            spot_symbol = self.config.get('spot_symbol', 'BTC-USDT')
+            futures_symbol = self.config.get('futures_symbol', '')
+
+            # If no futures symbol configured, try to find one
+            if not futures_symbol:
+                futures_instruments = self.client.get_instruments('FUTURES', 'BTC-USDT')
+                if futures_instruments:
+                    now = datetime.now(timezone.utc)
+                    for inst in futures_instruments:
+                        if inst.expiry_time and (inst.expiry_time - now).days >= 3:
+                            futures_symbol = inst.inst_id
+                            self.config['futures_symbol'] = futures_symbol
+                            break
+
+            if not futures_symbol:
+                logger.warning("No futures symbol available for bootstrapping")
+                return
+
+            # Fetch 1-minute candles for both spot and futures
+            # OKX max is 300 per request, so we may need multiple calls
+            candles_to_fetch = min(points_needed + 10, 300)  # Add buffer
+
+            logger.info(f"Fetching {candles_to_fetch} candles for {spot_symbol} and {futures_symbol}...")
+
+            spot_candles = self.client.get_candles(spot_symbol, bar='1m', limit=candles_to_fetch)
+            futures_candles = self.client.get_candles(futures_symbol, bar='1m', limit=candles_to_fetch)
+
+            if not spot_candles or not futures_candles:
+                logger.warning("Could not fetch candle data")
+                return
+
+            # Match candles by timestamp and calculate spreads
+            spot_by_ts = {c['timestamp']: c for c in spot_candles}
+            futures_by_ts = {c['timestamp']: c for c in futures_candles}
+
+            common_timestamps = sorted(set(spot_by_ts.keys()) & set(futures_by_ts.keys()))
+
+            spreads_added = 0
+            asset_name = self.config.get('asset_name', 'BTC')
+
+            for ts in common_timestamps:
+                spot_close = spot_by_ts[ts]['close']
+                futures_close = futures_by_ts[ts]['close']
+                spread = futures_close - spot_close
+
+                self.spread_cache.append(spread)
+
+                # Also save to database for persistence
+                self.db.save_price(asset_name, spot_close, futures_close, spread)
+                spreads_added += 1
+
+            logger.info(f"Bootstrapped {spreads_added} historical spread points from OKX candles")
+            logger.info(f"Total spread points now: {len(self.spread_cache)}")
+
+        except Exception as e:
+            logger.error(f"Error bootstrapping from OKX: {e}")
 
     def start_background_updates(self):
         """Start background update thread"""

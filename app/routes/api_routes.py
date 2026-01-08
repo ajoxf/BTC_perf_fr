@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 from app.models import Position, Trade, FundingHistory, BasisHistory
+from app.state import trading_state
 from app import db
 
 api_bp = Blueprint('api', __name__)
@@ -14,7 +15,6 @@ api_bp = Blueprint('api', __name__)
 @api_bp.route('/status')
 def status():
     """Get system status"""
-    # This would be populated by the trading engine
     return jsonify({
         'status': 'running',
         'timestamp': datetime.utcnow().isoformat(),
@@ -24,44 +24,14 @@ def status():
 
 @api_bp.route('/market-data')
 def market_data():
-    """Get current market data"""
-    # This would be populated by the data collector
-    return jsonify({
-        'spot': {
-            'instrument': 'BTC-USDT',
-            'price': 0,
-            'timestamp': datetime.utcnow().isoformat()
-        },
-        'perp': {
-            'instrument': 'BTC-USDT-SWAP',
-            'price': 0,
-            'funding_rate': 0,
-            'predicted_rate': 0,
-            'timestamp': datetime.utcnow().isoformat()
-        },
-        'futures': []
-    })
+    """Get current market data from shared state"""
+    return jsonify(trading_state.get_market_data())
 
 
 @api_bp.route('/strategies')
 def strategies():
-    """Get strategy status"""
-    return jsonify({
-        'basis': {
-            'enabled': True,
-            'has_position': False,
-            'current_zscore': 0,
-            'current_hurst': 0.5,
-            'signal': 'none'
-        },
-        'funding': {
-            'enabled': True,
-            'has_position': False,
-            'current_rate': 0,
-            'current_zscore': 0,
-            'signal': 'none'
-        }
-    })
+    """Get strategy status from shared state"""
+    return jsonify(trading_state.get_strategies())
 
 
 @api_bp.route('/positions')
@@ -172,13 +142,14 @@ def risk_status():
 @api_bp.route('/strategy/<strategy_name>/enable', methods=['POST'])
 def enable_strategy(strategy_name: str):
     """Enable a strategy"""
-    # This would interact with the trading engine
+    trading_state.set_strategy_enabled(strategy_name, True)
     return jsonify({'success': True, 'strategy': strategy_name, 'enabled': True})
 
 
 @api_bp.route('/strategy/<strategy_name>/disable', methods=['POST'])
 def disable_strategy(strategy_name: str):
     """Disable a strategy"""
+    trading_state.set_strategy_enabled(strategy_name, False)
     return jsonify({'success': True, 'strategy': strategy_name, 'enabled': False})
 
 

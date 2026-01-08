@@ -51,6 +51,7 @@ def run_trading_engine(paper_mode: bool = True):
     from app.execution.paper_trading import PaperTradingEngine
     from app.execution.position_manager import PositionManager
     from app.risk.risk_manager import RiskManager
+    from app.state import trading_state
 
     # Load configuration
     config = TradingConfig.from_yaml('config.yaml')
@@ -137,13 +138,35 @@ def run_trading_engine(paper_mode: bool = True):
                 # Get current market data
                 market_data = collector.get_market_data()
 
+                # Update shared state for dashboard
+                trading_state.update_market_data(
+                    spot=market_data['spot_price'],
+                    perp=market_data['perp_price'],
+                    funding=market_data['funding_rate'],
+                    predicted=market_data['predicted_rate'],
+                    futures=market_data['futures']
+                )
+
                 if market_data['spot_price']:
+                    # Check if strategies are enabled via UI
+                    basis_strategy.enabled = trading_state.is_strategy_enabled('basis')
+                    funding_strategy.enabled = trading_state.is_strategy_enabled('funding')
+
                     # Update basis strategy
                     if basis_strategy.enabled:
                         basis_signal = basis_strategy.update({
                             'spot_price': market_data['spot_price'],
                             'futures': market_data['futures']
                         })
+
+                        # Update shared state
+                        trading_state.update_basis_strategy(
+                            zscore=basis_strategy.current_zscore,
+                            hurst=basis_strategy.current_hurst,
+                            signal=basis_signal.signal_type.value,
+                            basis_pct=basis_strategy.current_basis_pct,
+                            has_position=basis_strategy.has_position
+                        )
 
                         if basis_signal.is_entry():
                             logger.info(f"Basis entry signal: {basis_signal.reason}")
@@ -158,6 +181,13 @@ def run_trading_engine(paper_mode: bool = True):
                             'funding_rate': market_data['funding_rate'],
                             'predicted_rate': market_data['predicted_rate']
                         })
+
+                        # Update shared state
+                        trading_state.update_funding_strategy(
+                            zscore=funding_strategy.current_zscore,
+                            signal=funding_signal.signal_type.value,
+                            has_position=funding_strategy.has_position
+                        )
 
                         if funding_signal.is_entry():
                             logger.info(f"Funding entry signal: {funding_signal.reason}")

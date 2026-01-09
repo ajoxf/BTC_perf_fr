@@ -212,81 +212,37 @@ spread = data.get('spread', 0) if data else 0
 futures_symbol = config.get('futures_symbol', 'BTC-USDT-SWAP')
 days_to_expiry = data.get('days_to_expiry', '--') if data else '--'
 
-# Main 3-column layout matching Flask version
+# Main 3-column layout
 col1, col2, col3 = st.columns([1, 1.5, 1])
 
 # LEFT: BTC Price Card
 with col1:
-    st.markdown(f"""
-    <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <span style="font-size: 1.5rem; font-weight: bold;">{config.get('asset_name', 'BTC')}</span>
-            <span style="color: #888;">N/A</span>
-        </div>
+    with st.container(border=True):
+        st.markdown(f"**{config.get('asset_name', 'BTC')}**")
 
-        <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-            <div>
-                <div style="color: #888; font-size: 0.8rem;">SPOT (MID)</div>
-                <div style="font-size: 1.3rem; font-weight: bold;">{spot_price:,.2f}</div>
-                <div style="font-size: 0.75rem; color: #888;">
-                    <span style="color: #27ae60;">{spot_bid:,.2f}</span> /
-                    <span style="color: #e74c3c;">{spot_ask:,.2f}</span>
-                    <span>(Δ${spot_spread:.2f})</span>
-                </div>
-            </div>
-            <div>
-                <div style="color: #888; font-size: 0.8rem;">FUT ({futures_symbol})</div>
-                <div style="font-size: 1.3rem; font-weight: bold;">{futures_price:,.2f}</div>
-                <div style="font-size: 0.75rem; color: #888;">
-                    <span style="color: #27ae60;">{futures_bid:,.2f}</span> /
-                    <span style="color: #e74c3c;">{futures_ask:,.2f}</span>
-                    <span>(Δ${futures_spread:.2f})</span>
-                </div>
-            </div>
-        </div>
+        subcol1, subcol2 = st.columns(2)
+        with subcol1:
+            st.caption("SPOT (MID)")
+            st.markdown(f"**{spot_price:,.2f}**")
+            st.caption(f":green[{spot_bid:,.2f}] / :red[{spot_ask:,.2f}]")
 
-        <div style="border-top: 1px solid #eee; padding-top: 10px;">
-            <div style="display: flex; justify-content: space-between;">
-                <span style="color: #888;">Basis (F-S)</span>
-                <span style="font-weight: bold; color: {'#e74c3c' if spread < 0 else '#27ae60'};">{spread:.2f}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
-                <span style="color: #888;">Contract:</span>
-                <span style="color: #3498db;">{futures_symbol}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
-                <span style="color: #888;">Days to Expiry:</span>
-                <span>{days_to_expiry}</span>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        with subcol2:
+            st.caption(f"FUT")
+            st.markdown(f"**{futures_price:,.2f}**")
+            st.caption(f":green[{futures_bid:,.2f}] / :red[{futures_ask:,.2f}]")
+
+        st.divider()
+        basis_color = "red" if spread < 0 else "green"
+        st.markdown(f"Basis (F-S): **:{basis_color}[{spread:.2f}]**")
+        st.caption(f"Contract: {futures_symbol}")
+        st.caption(f"Days to Expiry: {days_to_expiry}")
 
 # CENTER: Z-Score Card
 with col2:
     signal_type = signal.get('type', 'NO_SIGNAL')
 
-    # Hurst badge color
-    if hurst_regime == 'MEAN_REVERTING':
-        hurst_bg = "#d4edda"
-        hurst_color = "#155724"
-    elif hurst_regime == 'TRENDING':
-        hurst_bg = "#f8d7da"
-        hurst_color = "#721c24"
-    else:
-        hurst_bg = "#e2e3e5"
-        hurst_color = "#383d41"
-
-    # Z-score color
-    if zscore is not None:
-        if abs(zscore) >= config.get('entry_std_dev', 2.0):
-            zscore_color = "#e74c3c" if zscore > 0 else "#27ae60"
-        else:
-            zscore_color = "#333"
-        zscore_display = f"{zscore:.2f}σ"
-    else:
-        zscore_color = "#888"
-        zscore_display = "--"
+    # Z-score display
+    zscore_display = f"{zscore:.2f}σ" if zscore is not None else "--"
 
     # Data progress
     count = stats.get('count', 0)
@@ -295,42 +251,41 @@ with col2:
     has_enough = stats.get('has_enough_data', False)
     pct = min(100, (count / required) * 100) if required > 0 else 0
 
-    if has_enough:
-        progress_text = f"✓ Ready ({count} pts) | Building: {pct:.0f}%"
-        progress_color = "#3498db"
-    else:
-        progress_text = f"Collecting: {count}/{min_required} ({min(100, (count/min_required)*100):.0f}%)"
-        progress_color = "#f39c12"
+    with st.container(border=True):
+        st.caption(signal_type)
 
-    st.markdown(f"""
-    <div style="background: white; border: 2px solid {'#f8d7da' if signal_type != 'NO_SIGNAL' else '#ddd'}; border-radius: 10px; padding: 20px; text-align: center;">
-        <div style="color: #888; margin-bottom: 5px;">{signal_type}</div>
-        <div style="font-size: 3rem; font-weight: bold; color: {zscore_color};">{zscore_display}</div>
+        # Z-score centered
+        if zscore is not None and abs(zscore) >= config.get('entry_std_dev', 2.0):
+            color = "red" if zscore > 0 else "green"
+            st.markdown(f"<h1 style='text-align:center'>:{color}[{zscore_display}]</h1>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"# {zscore_display}")
 
-        <div style="display: inline-block; padding: 5px 15px; background: {hurst_bg}; color: {hurst_color}; border-radius: 20px; margin: 10px 0;">
-            Hurst: {(hurst if hurst else 0):.3f} | {hurst_regime}
-        </div>
+        # Hurst badge
+        hurst_val = hurst if hurst else 0
+        if hurst_regime == 'MEAN_REVERTING':
+            st.success(f"Hurst: {hurst_val:.3f} | {hurst_regime}")
+        elif hurst_regime == 'TRENDING':
+            st.error(f"Hurst: {hurst_val:.3f} | {hurst_regime}")
+        else:
+            st.info(f"Hurst: {hurst_val:.3f} | {hurst_regime}")
 
-        <div style="font-size: 0.8rem; color: {progress_color}; margin: 10px 0;">
-            {progress_text}
-        </div>
+        # Progress
+        if has_enough:
+            st.caption(f"✓ Ready ({count} pts) | Building: {pct:.0f}%")
+        else:
+            st.caption(f"Collecting: {count}/{min_required}")
+        st.progress(pct / 100)
 
-        <div style="display: flex; justify-content: space-around; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
-            <div>
-                <div style="color: #888; font-size: 0.8rem;">MEAN</div>
-                <div style="font-weight: bold;">{stats.get('mean', 0):.2f}</div>
-            </div>
-            <div>
-                <div style="color: #888; font-size: 0.8rem;">STD</div>
-                <div style="font-weight: bold;">{stats.get('std', 0):.2f}</div>
-            </div>
-            <div>
-                <div style="color: #888; font-size: 0.8rem;">SPREAD</div>
-                <div style="font-weight: bold;">{spread:.2f}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        # Stats
+        st.divider()
+        stat1, stat2, stat3 = st.columns(3)
+        with stat1:
+            st.metric("MEAN", f"{stats.get('mean', 0):.2f}")
+        with stat2:
+            st.metric("STD", f"{stats.get('std', 0):.2f}")
+        with stat3:
+            st.metric("SPREAD", f"{spread:.2f}")
 
 # RIGHT: Entry/Exit Levels
 with col3:
@@ -344,33 +299,16 @@ with col3:
     long_entry = mean - (entry_std * std)
     long_exit = mean - (exit_std * std)
 
-    st.markdown(f"""
-    <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="background: #f8d7da; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
-            <div style="font-weight: bold; color: #721c24; margin-bottom: 10px;">Short Spread</div>
-            <div style="display: flex; justify-content: space-between;">
-                <span>Entry ↑</span>
-                <span style="font-weight: bold;">{short_entry:.2f}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-                <span>Exit</span>
-                <span style="font-weight: bold;">{short_exit:.2f}</span>
-            </div>
-        </div>
+    with st.container(border=True):
+        st.markdown("**:red[Short Spread]**")
+        st.markdown(f"Entry ↑: **{short_entry:.2f}**")
+        st.markdown(f"Exit: **{short_exit:.2f}**")
 
-        <div style="background: #d4edda; padding: 15px; border-radius: 8px;">
-            <div style="font-weight: bold; color: #155724; margin-bottom: 10px;">Long Spread</div>
-            <div style="display: flex; justify-content: space-between;">
-                <span>Entry ↓</span>
-                <span style="font-weight: bold;">{long_entry:.2f}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-                <span>Exit</span>
-                <span style="font-weight: bold;">{long_exit:.2f}</span>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        st.divider()
+
+        st.markdown("**:green[Long Spread]**")
+        st.markdown(f"Entry ↓: **{long_entry:.2f}**")
+        st.markdown(f"Exit: **{long_exit:.2f}**")
 
 # Account info row
 st.divider()

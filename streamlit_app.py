@@ -1,6 +1,10 @@
 """
 Streamlit Trading Portal for BTC Basis Trading
 Alternative UI to the Flask version (trading_portal.py)
+
+Supports both:
+- Streamlit Cloud deployment (uses st.secrets)
+- Local development (uses .env file)
 """
 
 import streamlit as st
@@ -14,8 +18,15 @@ from datetime import datetime, timezone
 from collections import deque
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables from .env (for local dev)
 load_dotenv()
+
+# Override with Streamlit secrets if available (for cloud deployment)
+if hasattr(st, 'secrets') and 'okx' in st.secrets:
+    os.environ['OKX_API_KEY'] = st.secrets['okx']['api_key']
+    os.environ['OKX_SECRET_KEY'] = st.secrets['okx']['secret_key']
+    os.environ['OKX_PASSPHRASE'] = st.secrets['okx']['passphrase']
+    os.environ['OKX_DEMO'] = str(st.secrets['okx'].get('demo', True)).lower()
 
 # Import shared components from Flask app
 from trading_portal import TradingDatabase, TradingMonitor

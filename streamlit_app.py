@@ -73,33 +73,14 @@ db, monitor = init_trading_system()
 # Custom CSS
 st.markdown("""
 <style>
-    .metric-card {
-        background: white;
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .big-number {
-        font-size: 2rem;
-        font-weight: bold;
-    }
-    .green { color: #27ae60; }
-    .red { color: #e74c3c; }
-    .yellow { color: #f39c12; }
-    .status-connected {
-        background: #d4edda;
-        color: #155724;
-        padding: 5px 10px;
-        border-radius: 15px;
-        font-weight: bold;
-    }
-    .status-disconnected {
-        background: #f8d7da;
-        color: #721c24;
-        padding: 5px 10px;
-        border-radius: 15px;
-        font-weight: bold;
-    }
+    .price { font-size: 18px; font-weight: bold; }
+    .number { font-size: 16px; }
+    .spread { font-size: 20px; }
+    .price-green { font-size: 18px; font-weight: bold; color: #27ae60; }
+    .price-red { font-size: 18px; font-weight: bold; color: #e74c3c; }
+    .zscore-big { font-size: 48px; font-weight: bold; text-align: center; }
+    .zscore-green { font-size: 48px; font-weight: bold; text-align: center; color: #27ae60; }
+    .zscore-red { font-size: 48px; font-weight: bold; text-align: center; color: #e74c3c; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,19 +204,19 @@ with col1:
         subcol1, subcol2 = st.columns(2)
         with subcol1:
             st.caption("SPOT (MID)")
-            st.markdown(f"**{spot_price:,.2f}**")
-            st.caption(f":green[{spot_bid:,.2f}] / :red[{spot_ask:,.2f}]")
+            st.markdown(f'<span class="price">{spot_price:,.2f}</span>', unsafe_allow_html=True)
+            st.markdown(f'<span class="price-green">{spot_bid:,.2f}</span> / <span class="price-red">{spot_ask:,.2f}</span>', unsafe_allow_html=True)
 
         with subcol2:
             st.caption(f"FUT")
-            st.markdown(f"**{futures_price:,.2f}**")
-            st.caption(f":green[{futures_bid:,.2f}] / :red[{futures_ask:,.2f}]")
+            st.markdown(f'<span class="price">{futures_price:,.2f}</span>', unsafe_allow_html=True)
+            st.markdown(f'<span class="price-green">{futures_bid:,.2f}</span> / <span class="price-red">{futures_ask:,.2f}</span>', unsafe_allow_html=True)
 
         st.divider()
-        basis_color = "red" if spread < 0 else "green"
-        st.markdown(f"Basis (F-S): **:{basis_color}[{spread:.2f}]**")
-        st.caption(f"Contract: {futures_symbol}")
-        st.caption(f"Days to Expiry: {days_to_expiry}")
+        basis_class = "price-red" if spread < 0 else "price-green"
+        st.markdown(f'Basis (F-S): <span class="{basis_class}">{spread:.2f}</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="number">Contract: {futures_symbol}</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="number">Days to Expiry: {days_to_expiry}</span>', unsafe_allow_html=True)
 
 # CENTER: Z-Score Card
 with col2:
@@ -254,12 +235,12 @@ with col2:
     with st.container(border=True):
         st.caption(signal_type)
 
-        # Z-score centered
+        # Z-score centered with custom size
         if zscore is not None and abs(zscore) >= config.get('entry_std_dev', 2.0):
-            color = "red" if zscore > 0 else "green"
-            st.markdown(f"<h1 style='text-align:center'>:{color}[{zscore_display}]</h1>", unsafe_allow_html=True)
+            zscore_class = "zscore-red" if zscore > 0 else "zscore-green"
         else:
-            st.markdown(f"# {zscore_display}")
+            zscore_class = "zscore-big"
+        st.markdown(f'<div class="{zscore_class}">{zscore_display}</div>', unsafe_allow_html=True)
 
         # Hurst badge
         hurst_val = hurst if hurst else 0
@@ -272,20 +253,23 @@ with col2:
 
         # Progress
         if has_enough:
-            st.caption(f"✓ Ready ({count} pts) | Building: {pct:.0f}%")
+            st.markdown(f'<span class="number">✓ Ready ({count} pts) | Building: {pct:.0f}%</span>', unsafe_allow_html=True)
         else:
-            st.caption(f"Collecting: {count}/{min_required}")
+            st.markdown(f'<span class="number">Collecting: {count}/{min_required}</span>', unsafe_allow_html=True)
         st.progress(pct / 100)
 
         # Stats
         st.divider()
         stat1, stat2, stat3 = st.columns(3)
         with stat1:
-            st.metric("MEAN", f"{stats.get('mean', 0):.2f}")
+            st.caption("MEAN")
+            st.markdown(f'<span class="number">{stats.get("mean", 0):.2f}</span>', unsafe_allow_html=True)
         with stat2:
-            st.metric("STD", f"{stats.get('std', 0):.2f}")
+            st.caption("STD")
+            st.markdown(f'<span class="number">{stats.get("std", 0):.2f}</span>', unsafe_allow_html=True)
         with stat3:
-            st.metric("SPREAD", f"{spread:.2f}")
+            st.caption("SPREAD")
+            st.markdown(f'<span class="number">{spread:.2f}</span>', unsafe_allow_html=True)
 
 # RIGHT: Entry/Exit Levels
 with col3:
@@ -301,14 +285,21 @@ with col3:
 
     with st.container(border=True):
         st.markdown("**:red[Short Spread]**")
-        st.markdown(f"Entry ↑: **{short_entry:.2f}**")
-        st.markdown(f"Exit: **{short_exit:.2f}**")
+        st.markdown(f'Entry ↑: <span class="price">{short_entry:.2f}</span>', unsafe_allow_html=True)
+        st.markdown(f'Exit: <span class="price">{short_exit:.2f}</span>', unsafe_allow_html=True)
 
         st.divider()
 
         st.markdown("**:green[Long Spread]**")
-        st.markdown(f"Entry ↓: **{long_entry:.2f}**")
-        st.markdown(f"Exit: **{long_exit:.2f}**")
+        st.markdown(f'Entry ↓: <span class="price">{long_entry:.2f}</span>', unsafe_allow_html=True)
+        st.markdown(f'Exit: <span class="price">{long_exit:.2f}</span>', unsafe_allow_html=True)
+
+        st.divider()
+
+        # Bid/Ask Spread section
+        st.markdown("**Bid/Ask Spread**")
+        st.markdown(f'<span class="spread">Spot: {spot_spread:.4f}</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="spread">Futures: {futures_spread:.4f}</span>', unsafe_allow_html=True)
 
 # Account info row
 st.divider()

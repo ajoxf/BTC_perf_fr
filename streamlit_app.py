@@ -117,6 +117,13 @@ with st.sidebar:
         st.warning("🟡 NO AUTH")
     else:
         st.error("🔴 DISCONNECTED")
+        # Debug info
+        with st.expander("Debug Info"):
+            has_secrets = hasattr(st, 'secrets') and 'okx' in st.secrets
+            st.write(f"Secrets loaded: {has_secrets}")
+            st.write(f"API Key set: {bool(os.environ.get('OKX_API_KEY'))}")
+            st.write(f"Demo mode: {os.environ.get('OKX_DEMO', 'not set')}")
+            st.write(f"Client created: {monitor.client is not None}")
 
     st.divider()
 

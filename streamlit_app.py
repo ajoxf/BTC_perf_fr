@@ -170,6 +170,42 @@ with st.sidebar:
 
 # Main content
 st.title("📈 BTC-USD Basis")
+
+# Determine trading session based on UTC hour
+def get_trading_session():
+    utc_hour = datetime.now(timezone.utc).hour
+    if 0 <= utc_hour < 7:
+        return "Asia/Sydney"
+    elif 7 <= utc_hour < 14:
+        return "Europe/London"
+    else:
+        return "America/New_York"
+
+# Header status bar
+session = get_trading_session()
+entry_std = config.get('entry_std_dev', 2.0)
+exit_std = config.get('exit_std_dev', 0.2)
+stop_std = config.get('stop_loss_std_dev', 6.0)
+hurst_thresh = config.get('hurst_threshold', 0.5)
+hurst_duration = config.get('trending_duration_minutes', 20)
+
+algo_status = "ON" if config.get('algo_enabled', False) else "OFF"
+algo_color = "#27ae60" if config.get('algo_enabled', False) else "#e74c3c"
+mode_status = "PAPER" if config.get('paper_mode', True) else "LIVE"
+mode_color = "#f39c12" if config.get('paper_mode', True) else "#e74c3c"
+conn_status = "CONNECTED" if (monitor.client is not None and monitor.current_data and monitor.current_data.get('spot_price')) else "DISCONNECTED"
+conn_color = "#27ae60" if conn_status == "CONNECTED" else "#e74c3c"
+
+st.markdown(f"""
+<div style="display: flex; align-items: center; gap: 20px; padding: 8px 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 15px; flex-wrap: wrap;">
+    <span>Algo Trading: <span style="background: {algo_color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px;">{algo_status}</span></span>
+    <span>Mode: <span style="background: {mode_color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px;">{mode_status}</span></span>
+    <span><b>Thresholds:</b> Entry: ±{entry_std}σ | Exit: ±{exit_std}σ | Stop: ±{stop_std}σ | Hurst: {hurst_thresh} ({hurst_duration}min)</span>
+    <span>Session: {session}</span>
+    <span style="margin-left: auto;"><span style="color: {conn_color};">●</span> {conn_status}</span>
+</div>
+""", unsafe_allow_html=True)
+
 st.caption(f"Last update: {datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
 
 # Extract data

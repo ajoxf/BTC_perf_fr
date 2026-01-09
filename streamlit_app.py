@@ -336,8 +336,8 @@ with tab2:
                            row_heights=[0.7, 0.3])
 
         # Prices
-        fig.add_trace(go.Scatter(x=df_price['time'], y=df_price['spot'], name='Spot', line=dict(color='blue')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_price['time'], y=df_price['futures'], name='Futures', line=dict(color='orange')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_price['time'], y=df_price['spot_price'], name='Spot', line=dict(color='blue')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_price['time'], y=df_price['futures_price'], name='Futures', line=dict(color='orange')), row=1, col=1)
 
         # Spread
         fig.add_trace(go.Scatter(x=df_price['time'], y=df_price['spread'], name='Spread', line=dict(color='purple'), fill='tozeroy'), row=2, col=1)

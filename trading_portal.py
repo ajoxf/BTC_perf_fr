@@ -462,11 +462,18 @@ class TradingMonitor:
 
             self.config = self.db.get_config()
 
+            # Use OKX_DEMO env var if set (from Streamlit secrets), else use config
+            demo_env = os.environ.get('OKX_DEMO', '').lower()
+            if demo_env in ('true', 'false'):
+                demo_trading = demo_env == 'true'
+            else:
+                demo_trading = self.config.get('paper_mode', True)
+
             self.client = OKXClient(
                 api_key=os.environ.get('OKX_API_KEY', ''),
                 secret_key=os.environ.get('OKX_SECRET_KEY', ''),
                 passphrase=os.environ.get('OKX_PASSPHRASE', ''),
-                demo_trading=self.config.get('paper_mode', True)
+                demo_trading=demo_trading
             )
 
             # Test connection

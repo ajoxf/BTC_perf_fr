@@ -182,8 +182,10 @@ with st.sidebar:
         monitor.positions.clear()
         st.success("Trades cleared!")
 
-    # Auto-refresh
-    refresh_rate = st.selectbox("Refresh Rate", [1, 2, 5, 10], index=0)
+    # Auto-refresh (in milliseconds)
+    refresh_options = {"300ms": 0.3, "500ms": 0.5, "1s": 1, "2s": 2, "5s": 5}
+    refresh_choice = st.selectbox("Refresh Rate", list(refresh_options.keys()), index=0)
+    refresh_rate = refresh_options[refresh_choice]
 
 # Main content
 st.title("📈 BTC Basis Trading Portal")

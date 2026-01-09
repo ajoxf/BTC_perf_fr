@@ -76,8 +76,8 @@ st.markdown("""
     .price { font-size: 26px; font-weight: bold; }
     .number { font-size: 16px; }
     .spread { font-size: 20px; }
-    .price-green { font-size: 26px; font-weight: bold; color: #27ae60; }
-    .price-red { font-size: 26px; font-weight: bold; color: #e74c3c; }
+    .price-green { font-size: 16px; font-weight: bold; color: #27ae60; }
+    .price-red { font-size: 16px; font-weight: bold; color: #e74c3c; }
     .zscore-big { font-size: 48px; font-weight: bold; text-align: center; }
     .zscore-green { font-size: 48px; font-weight: bold; text-align: center; color: #27ae60; }
     .zscore-red { font-size: 48px; font-weight: bold; text-align: center; color: #e74c3c; }

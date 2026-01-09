@@ -9,6 +9,7 @@ flask-migrate>=4.0.0
 
 # API and HTTP
 requests>=2.31.0
+websocket-client>=1.6.0
 
 # Data and Analytics
 numpy>=1.26.0

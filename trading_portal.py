@@ -416,6 +416,10 @@ class DatabaseManager:
             conn.close()
 
 
+# Alias for Streamlit compatibility
+TradingDatabase = DatabaseManager
+
+
 # ==================== TRADING MONITOR ====================
 
 class TradingMonitor:

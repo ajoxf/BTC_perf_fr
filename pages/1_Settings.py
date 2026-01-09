@@ -3,6 +3,11 @@ Settings Page for Streamlit Trading Portal
 """
 
 import streamlit as st
+import os
+
+# Detect if running on Streamlit Cloud
+IS_STREAMLIT_CLOUD = os.environ.get('STREAMLIT_SHARING_MODE') or os.path.exists('/mount/src')
+
 from trading_portal import TradingDatabase, TradingMonitor
 
 st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
@@ -10,7 +15,8 @@ st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
 # Initialize (reuse from main app)
 @st.cache_resource
 def get_db():
-    return TradingDatabase()
+    db_path = "/tmp/trading_portal.db" if IS_STREAMLIT_CLOUD else "trading_portal.db"
+    return TradingDatabase(db_path)
 
 @st.cache_resource
 def get_monitor(_db):

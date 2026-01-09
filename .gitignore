@@ -57,9 +57,12 @@ htmlcov/
 .nox/
 
 # Secrets - NEVER commit these
-*secret*
 *credential*
 *password*
+
+# Streamlit secrets (keep example, never commit actual secrets)
+.streamlit/secrets.toml
+!.streamlit/secrets.toml.example
 
 # OS files
 .DS_Store

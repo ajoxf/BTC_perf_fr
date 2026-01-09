@@ -13,10 +13,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 import os
+import sys
 import threading
 from datetime import datetime, timezone
 from collections import deque
 from dotenv import load_dotenv
+
+# Detect if running on Streamlit Cloud (read-only filesystem)
+IS_STREAMLIT_CLOUD = os.environ.get('STREAMLIT_SHARING_MODE') or os.path.exists('/mount/src')
 
 # Load environment variables from .env (for local dev)
 load_dotenv()
@@ -27,6 +31,12 @@ if hasattr(st, 'secrets') and 'okx' in st.secrets:
     os.environ['OKX_SECRET_KEY'] = st.secrets['okx']['secret_key']
     os.environ['OKX_PASSPHRASE'] = st.secrets['okx']['passphrase']
     os.environ['OKX_DEMO'] = str(st.secrets['okx'].get('demo', True)).lower()
+
+# Configure logging for cloud (disable file logging)
+if IS_STREAMLIT_CLOUD:
+    from loguru import logger
+    logger.remove()  # Remove default handler
+    logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>", level="INFO")
 
 # Import shared components from Flask app
 from trading_portal import TradingDatabase, TradingMonitor
@@ -43,7 +53,9 @@ st.set_page_config(
 @st.cache_resource
 def init_trading_system():
     """Initialize the trading system (runs once)"""
-    db = TradingDatabase()
+    # Use /tmp for database on Streamlit Cloud (read-only filesystem)
+    db_path = "/tmp/trading_portal.db" if IS_STREAMLIT_CLOUD else "trading_portal.db"
+    db = TradingDatabase(db_path)
     monitor = TradingMonitor(db)
 
     # Try to initialize OKX

@@ -73,11 +73,11 @@ db, monitor = init_trading_system()
 # Custom CSS
 st.markdown("""
 <style>
-    .price { font-size: 44px; font-weight: normal; }
+    .price { font-size: 26px; font-weight: bold; }
     .number { font-size: 16px; }
     .spread { font-size: 20px; }
-    .price-green { font-size: 44px; font-weight: normal; color: #27ae60; }
-    .price-red { font-size: 44px; font-weight: normal; color: #e74c3c; }
+    .price-green { font-size: 26px; font-weight: bold; color: #27ae60; }
+    .price-red { font-size: 26px; font-weight: bold; color: #e74c3c; }
     .zscore-big { font-size: 48px; font-weight: bold; text-align: center; }
     .zscore-green { font-size: 48px; font-weight: bold; text-align: center; color: #27ae60; }
     .zscore-red { font-size: 48px; font-weight: bold; text-align: center; color: #e74c3c; }

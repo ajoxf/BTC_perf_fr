@@ -308,7 +308,7 @@ with col2:
         <div style="font-size: 3rem; font-weight: bold; color: {zscore_color};">{zscore_display}</div>
 
         <div style="display: inline-block; padding: 5px 15px; background: {hurst_bg}; color: {hurst_color}; border-radius: 20px; margin: 10px 0;">
-            Hurst: {hurst:.3f if hurst else 0:.3f} | {hurst_regime}
+            Hurst: {(hurst if hurst else 0):.3f} | {hurst_regime}
         </div>
 
         <div style="font-size: 0.8rem; color: {progress_color}; margin: 10px 0;">

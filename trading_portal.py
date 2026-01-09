@@ -457,6 +457,7 @@ class TradingMonitor:
 
     def initialize_okx(self) -> bool:
         """Initialize OKX connection"""
+        self._init_error = None
         try:
             from app.api.okx_client import OKXClient
 
@@ -490,10 +491,12 @@ class TradingMonitor:
 
                 return True
             else:
-                logger.error("Failed to get ticker data")
+                self._init_error = "Failed to get ticker data from OKX"
+                logger.error(self._init_error)
                 return False
 
         except Exception as e:
+            self._init_error = str(e)
             logger.error(f"OKX initialization failed: {e}")
             return False
 

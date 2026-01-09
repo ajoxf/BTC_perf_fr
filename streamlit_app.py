@@ -57,10 +57,14 @@ def init_trading_system():
     db_path = "/tmp/trading_portal.db" if IS_STREAMLIT_CLOUD else "trading_portal.db"
     db = TradingDatabase(db_path)
     monitor = TradingMonitor(db)
+    monitor._init_error = None
 
     # Try to initialize OKX
-    if monitor.initialize_okx():
-        monitor.start_background_updates()
+    try:
+        if monitor.initialize_okx():
+            monitor.start_background_updates()
+    except Exception as e:
+        monitor._init_error = str(e)
 
     return db, monitor
 
@@ -124,6 +128,8 @@ with st.sidebar:
             st.write(f"API Key set: {bool(os.environ.get('OKX_API_KEY'))}")
             st.write(f"Demo mode: {os.environ.get('OKX_DEMO', 'not set')}")
             st.write(f"Client created: {monitor.client is not None}")
+            if hasattr(monitor, '_init_error') and monitor._init_error:
+                st.error(f"Init error: {monitor._init_error}")
 
     st.divider()
 

@@ -27,10 +27,14 @@ from loguru import logger
 # Load environment
 load_dotenv()
 
+# Detect Streamlit Cloud (read-only filesystem)
+IS_STREAMLIT_CLOUD = os.environ.get('STREAMLIT_SHARING_MODE') or os.path.exists('/mount/src')
+
 # Configure logging
 logger.remove()
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>", level="INFO")
-logger.add("logs/trading_portal_{time:YYYY-MM-DD}.log", rotation="1 day", retention="30 days", level="DEBUG")
+if not IS_STREAMLIT_CLOUD:
+    logger.add("logs/trading_portal_{time:YYYY-MM-DD}.log", rotation="1 day", retention="30 days", level="DEBUG")
 
 # ==================== DATABASE MANAGER ====================
 

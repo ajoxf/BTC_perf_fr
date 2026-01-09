@@ -43,7 +43,7 @@ from trading_portal import TradingDatabase, TradingMonitor
 
 # Page config
 st.set_page_config(
-    page_title="BTC Basis Trading Portal",
+    page_title="BTC-USD Basis",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -188,7 +188,7 @@ with st.sidebar:
     refresh_rate = refresh_options[refresh_choice]
 
 # Main content
-st.title("📈 BTC Basis Trading Portal")
+st.title("📈 BTC-USD Basis")
 st.caption(f"Last update: {datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
 
 # Extract data

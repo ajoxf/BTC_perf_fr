@@ -163,6 +163,11 @@ with st.sidebar:
         monitor.positions.clear()
         st.success("Trades cleared!")
 
+    st.divider()
+
+    # SD Analysis link
+    st.page_link("pages/2_SD_Analysis.py", label="📊 SD Analysis", icon="📊", use_container_width=True)
+
     # Auto-refresh (in milliseconds)
     refresh_options = {"300ms": 0.3, "500ms": 0.5, "1s": 1, "2s": 2, "5s": 5}
     refresh_choice = st.selectbox("Refresh Rate", list(refresh_options.keys()), index=0)

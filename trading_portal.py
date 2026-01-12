@@ -130,6 +130,46 @@ class DatabaseManager:
                 )
             ''')
 
+            # SD Touch Log table for tracking SD level touches
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sd_touch_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    asset TEXT NOT NULL,
+                    touch_date TEXT NOT NULL,
+                    touch_time TEXT NOT NULL,
+                    sd_level REAL NOT NULL,
+                    direction TEXT NOT NULL,
+                    touch_spread REAL NOT NULL,
+                    touch_zscore REAL NOT NULL,
+                    mean_at_touch REAL NOT NULL,
+                    std_at_touch REAL NOT NULL,
+                    reached_mean INTEGER DEFAULT 0,
+                    mean_reached_time TEXT,
+                    spread_at_mean REAL,
+                    potential_profit REAL,
+                    max_adverse_move REAL DEFAULT 0,
+                    status TEXT DEFAULT 'PENDING',
+                    entry_spot_spread REAL DEFAULT 0,
+                    entry_futures_spread REAL DEFAULT 0,
+                    exit_spot_spread REAL DEFAULT 0,
+                    exit_futures_spread REAL DEFAULT 0
+                )
+            ''')
+
+            # SD Touch tracker state table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sd_tracker_state (
+                    id INTEGER PRIMARY KEY,
+                    is_paused INTEGER DEFAULT 0,
+                    updated_at TEXT
+                )
+            ''')
+
+            # Insert default tracker state if not exists
+            cursor.execute('SELECT COUNT(*) FROM sd_tracker_state')
+            if cursor.fetchone()[0] == 0:
+                cursor.execute('INSERT INTO sd_tracker_state (id, is_paused) VALUES (1, 0)')
+
             # Insert default config if not exists
             cursor.execute('SELECT COUNT(*) FROM trading_config')
             if cursor.fetchone()[0] == 0:
@@ -419,9 +459,571 @@ class DatabaseManager:
             conn.commit()
             conn.close()
 
+    # ==================== SD TOUCH METHODS ====================
+
+    def get_sd_tracker_paused(self) -> bool:
+        """Check if SD tracker is paused"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT is_paused FROM sd_tracker_state WHERE id = 1')
+            row = cursor.fetchone()
+            conn.close()
+            return bool(row[0]) if row else False
+
+    def set_sd_tracker_paused(self, paused: bool):
+        """Set SD tracker paused state"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE sd_tracker_state SET is_paused = ?, updated_at = ? WHERE id = 1
+            ''', (1 if paused else 0, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            conn.close()
+
+    def save_sd_touch(self, touch: Dict):
+        """Save a new SD touch record"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO sd_touch_log (
+                    asset, touch_date, touch_time, sd_level, direction,
+                    touch_spread, touch_zscore, mean_at_touch, std_at_touch,
+                    reached_mean, mean_reached_time, spread_at_mean, potential_profit,
+                    max_adverse_move, status, entry_spot_spread, entry_futures_spread,
+                    exit_spot_spread, exit_futures_spread
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                touch.get('asset'),
+                touch.get('touch_date'),
+                touch.get('touch_time'),
+                touch.get('sd_level'),
+                touch.get('direction'),
+                touch.get('touch_spread'),
+                touch.get('touch_zscore'),
+                touch.get('mean_at_touch'),
+                touch.get('std_at_touch'),
+                1 if touch.get('reached_mean') else 0,
+                touch.get('mean_reached_time'),
+                touch.get('spread_at_mean'),
+                touch.get('potential_profit'),
+                touch.get('max_adverse_move', 0),
+                touch.get('status', 'PENDING'),
+                touch.get('entry_spot_spread', 0),
+                touch.get('entry_futures_spread', 0),
+                touch.get('exit_spot_spread', 0),
+                touch.get('exit_futures_spread', 0)
+            ))
+            touch_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return touch_id
+
+    def update_sd_touch(self, touch_id: int, updates: Dict):
+        """Update an existing SD touch record"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            set_clauses = []
+            values = []
+            for key, value in updates.items():
+                if key == 'reached_mean':
+                    set_clauses.append(f"{key} = ?")
+                    values.append(1 if value else 0)
+                else:
+                    set_clauses.append(f"{key} = ?")
+                    values.append(value)
+
+            values.append(touch_id)
+            cursor.execute(f'''
+                UPDATE sd_touch_log SET {", ".join(set_clauses)} WHERE id = ?
+            ''', tuple(values))
+            conn.commit()
+            conn.close()
+
+    def get_sd_touches(self, days: int = 7, status: str = None) -> List[Dict]:
+        """Get SD touches within specified days"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d')
+
+            if status:
+                cursor.execute('''
+                    SELECT id, asset, touch_date, touch_time, sd_level, direction,
+                           touch_spread, touch_zscore, mean_at_touch, std_at_touch,
+                           reached_mean, mean_reached_time, spread_at_mean, potential_profit,
+                           max_adverse_move, status, entry_spot_spread, entry_futures_spread,
+                           exit_spot_spread, exit_futures_spread
+                    FROM sd_touch_log
+                    WHERE touch_date >= ? AND status = ?
+                    ORDER BY touch_date DESC, touch_time DESC
+                ''', (cutoff, status))
+            else:
+                cursor.execute('''
+                    SELECT id, asset, touch_date, touch_time, sd_level, direction,
+                           touch_spread, touch_zscore, mean_at_touch, std_at_touch,
+                           reached_mean, mean_reached_time, spread_at_mean, potential_profit,
+                           max_adverse_move, status, entry_spot_spread, entry_futures_spread,
+                           exit_spot_spread, exit_futures_spread
+                    FROM sd_touch_log
+                    WHERE touch_date >= ?
+                    ORDER BY touch_date DESC, touch_time DESC
+                ''', (cutoff,))
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [{
+                'id': r[0], 'asset': r[1], 'touch_date': r[2], 'touch_time': r[3],
+                'sd_level': r[4], 'direction': r[5], 'touch_spread': r[6],
+                'touch_zscore': r[7], 'mean_at_touch': r[8], 'std_at_touch': r[9],
+                'reached_mean': bool(r[10]), 'mean_reached_time': r[11],
+                'spread_at_mean': r[12], 'potential_profit': r[13],
+                'max_adverse_move': r[14], 'status': r[15],
+                'entry_spot_spread': r[16], 'entry_futures_spread': r[17],
+                'exit_spot_spread': r[18], 'exit_futures_spread': r[19]
+            } for r in rows]
+
+    def get_pending_sd_touches(self) -> List[Dict]:
+        """Get all pending SD touches (not yet reached mean)"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, asset, touch_date, touch_time, sd_level, direction,
+                       touch_spread, touch_zscore, mean_at_touch, std_at_touch,
+                       reached_mean, mean_reached_time, spread_at_mean, potential_profit,
+                       max_adverse_move, status, entry_spot_spread, entry_futures_spread,
+                       exit_spot_spread, exit_futures_spread
+                FROM sd_touch_log
+                WHERE status = 'PENDING'
+                ORDER BY id ASC
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [{
+                'id': r[0], 'asset': r[1], 'touch_date': r[2], 'touch_time': r[3],
+                'sd_level': r[4], 'direction': r[5], 'touch_spread': r[6],
+                'touch_zscore': r[7], 'mean_at_touch': r[8], 'std_at_touch': r[9],
+                'reached_mean': bool(r[10]), 'mean_reached_time': r[11],
+                'spread_at_mean': r[12], 'potential_profit': r[13],
+                'max_adverse_move': r[14], 'status': r[15],
+                'entry_spot_spread': r[16], 'entry_futures_spread': r[17],
+                'exit_spot_spread': r[18], 'exit_futures_spread': r[19]
+            } for r in rows]
+
+    def delete_sd_touches(self, touch_ids: List[int]):
+        """Delete SD touches by IDs"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            placeholders = ','.join('?' * len(touch_ids))
+            cursor.execute(f'DELETE FROM sd_touch_log WHERE id IN ({placeholders})', touch_ids)
+            conn.commit()
+            conn.close()
+
+    def delete_sd_touches_by_level(self, sd_level: float, direction: str):
+        """Delete SD touches by SD level and direction"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM sd_touch_log WHERE sd_level = ? AND direction = ?',
+                          (sd_level, direction))
+            conn.commit()
+            conn.close()
+
+    def clear_sd_touches(self):
+        """Clear all SD touch records"""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM sd_touch_log')
+            conn.commit()
+            conn.close()
+
+    def get_sd_touch_summary(self, days: int = 7) -> List[Dict]:
+        """Get summary statistics grouped by SD level and direction"""
+        touches = self.get_sd_touches(days=days)
+
+        # Group by sd_level and direction
+        summary = {}
+        for t in touches:
+            key = (t['sd_level'], t['direction'])
+            if key not in summary:
+                summary[key] = {
+                    'sd_level': t['sd_level'],
+                    'direction': t['direction'],
+                    'total_touches': 0,
+                    'reached_mean': 0,
+                    'pending': 0,
+                    'total_gross_profit': 0,
+                    'total_entry_cost': 0,
+                    'total_exit_cost': 0,
+                    'total_net_profit': 0,
+                    'profits': []
+                }
+
+            s = summary[key]
+            s['total_touches'] += 1
+
+            if t['status'] == 'REACHED_MEAN':
+                s['reached_mean'] += 1
+                gross_profit = t.get('potential_profit', 0) or 0
+                entry_cost = (t.get('entry_spot_spread', 0) or 0) + (t.get('entry_futures_spread', 0) or 0)
+                exit_cost = (t.get('exit_spot_spread', 0) or 0) + (t.get('exit_futures_spread', 0) or 0)
+                net_profit = gross_profit - entry_cost - exit_cost
+
+                s['total_gross_profit'] += gross_profit
+                s['total_entry_cost'] += entry_cost
+                s['total_exit_cost'] += exit_cost
+                s['total_net_profit'] += net_profit
+                s['profits'].append(net_profit)
+            else:
+                s['pending'] += 1
+
+        # Calculate averages
+        result = []
+        for key, s in sorted(summary.items(), key=lambda x: (-x[0][0], x[0][1])):
+            completed = s['reached_mean']
+            avg_gross = s['total_gross_profit'] / completed if completed > 0 else 0
+            avg_cost = (s['total_entry_cost'] + s['total_exit_cost']) / completed if completed > 0 else 0
+            avg_net = s['total_net_profit'] / completed if completed > 0 else 0
+
+            result.append({
+                'sd_level': s['sd_level'],
+                'direction': s['direction'],
+                'total_touches': s['total_touches'],
+                'reached_mean': s['reached_mean'],
+                'pending': s['pending'],
+                'success_rate': (s['reached_mean'] / s['total_touches'] * 100) if s['total_touches'] > 0 else 0,
+                'avg_gross_profit': avg_gross,
+                'avg_actual_cost': avg_cost,
+                'avg_net_profit': avg_net,
+                'profitable': avg_net > 0
+            })
+
+        return result
+
+    def get_sd_touch_daily(self, days: int = 7) -> List[Dict]:
+        """Get daily breakdown of SD touches"""
+        touches = self.get_sd_touches(days=days)
+
+        # Group by date
+        daily = {}
+        for t in touches:
+            date = t['touch_date']
+            if date not in daily:
+                daily[date] = {
+                    'date': date,
+                    'total_touches': 0,
+                    'reached_mean': 0,
+                    'pending': 0,
+                    'total_net_profit': 0,
+                    'by_level': {}
+                }
+
+            d = daily[date]
+            d['total_touches'] += 1
+
+            # Track by level
+            level_key = f"{t['sd_level']}σ {t['direction']}"
+            if level_key not in d['by_level']:
+                d['by_level'][level_key] = {'touches': 0, 'reached': 0}
+            d['by_level'][level_key]['touches'] += 1
+
+            if t['status'] == 'REACHED_MEAN':
+                d['reached_mean'] += 1
+                d['by_level'][level_key]['reached'] += 1
+                gross_profit = t.get('potential_profit', 0) or 0
+                entry_cost = (t.get('entry_spot_spread', 0) or 0) + (t.get('entry_futures_spread', 0) or 0)
+                exit_cost = (t.get('exit_spot_spread', 0) or 0) + (t.get('exit_futures_spread', 0) or 0)
+                d['total_net_profit'] += gross_profit - entry_cost - exit_cost
+            else:
+                d['pending'] += 1
+
+        return [daily[d] for d in sorted(daily.keys(), reverse=True)]
+
 
 # Alias for Streamlit compatibility
 TradingDatabase = DatabaseManager
+
+
+# ==================== SD TOUCH TRACKER ====================
+
+class SDTouchTracker:
+    """
+    Tracks when spread touches various standard deviation levels
+    and whether it subsequently returns to the mean.
+    """
+
+    SD_LEVELS = [4.0, 3.5, 3.0, 2.5, 2.0]
+    COOLDOWN_SECONDS = 300  # 5 minutes between duplicate touches
+
+    def __init__(self, db: DatabaseManager):
+        self.db = db
+        self._last_touch_time: Dict[tuple, datetime] = {}  # (sd_level, direction) -> last touch time
+        self._pending_touches: Dict[int, Dict] = {}  # touch_id -> touch data (cached)
+
+    def is_paused(self) -> bool:
+        """Check if tracking is paused"""
+        return self.db.get_sd_tracker_paused()
+
+    def pause(self):
+        """Pause tracking"""
+        self.db.set_sd_tracker_paused(True)
+        logger.info("SD Touch Tracker paused")
+
+    def resume(self):
+        """Resume tracking"""
+        self.db.set_sd_tracker_paused(False)
+        logger.info("SD Touch Tracker resumed")
+
+    def toggle_pause(self) -> bool:
+        """Toggle pause state, returns new state"""
+        current = self.is_paused()
+        if current:
+            self.resume()
+        else:
+            self.pause()
+        return not current
+
+    def reset(self):
+        """Clear all touch records"""
+        self.db.clear_sd_touches()
+        self._last_touch_time.clear()
+        self._pending_touches.clear()
+        logger.info("SD Touch Tracker reset - all records cleared")
+
+    def _can_record_touch(self, sd_level: float, direction: str) -> bool:
+        """Check if we can record a new touch (respecting cooldown)"""
+        key = (sd_level, direction)
+        now = datetime.now(timezone.utc)
+
+        if key in self._last_touch_time:
+            elapsed = (now - self._last_touch_time[key]).total_seconds()
+            if elapsed < self.COOLDOWN_SECONDS:
+                return False
+
+        return True
+
+    def _record_touch_time(self, sd_level: float, direction: str):
+        """Record when a touch happened"""
+        key = (sd_level, direction)
+        self._last_touch_time[key] = datetime.now(timezone.utc)
+
+    def check_and_log_touches(
+        self,
+        asset: str,
+        spread: float,
+        zscore: float,
+        mean: float,
+        std: float,
+        contract_size: float,
+        spot_bid_ask: tuple,  # (bid, ask)
+        futures_bid_ask: tuple  # (bid, ask)
+    ):
+        """
+        Main entry point - called from monitoring loop.
+        Checks for new touches and updates pending touches.
+        """
+        if self.is_paused():
+            return
+
+        if zscore is None or std == 0:
+            return
+
+        now = datetime.now(timezone.utc)
+        spot_spread = spot_bid_ask[1] - spot_bid_ask[0] if spot_bid_ask[0] and spot_bid_ask[1] else 0
+        futures_spread = futures_bid_ask[1] - futures_bid_ask[0] if futures_bid_ask[0] and futures_bid_ask[1] else 0
+
+        # Check for new SD level touches
+        for sd_level in self.SD_LEVELS:
+            # Check upper touch (SHORT signal - zscore went above +sd_level)
+            if zscore >= sd_level:
+                direction = 'SHORT'
+                if self._can_record_touch(sd_level, direction):
+                    self._log_new_touch(
+                        asset=asset,
+                        sd_level=sd_level,
+                        direction=direction,
+                        spread=spread,
+                        zscore=zscore,
+                        mean=mean,
+                        std=std,
+                        spot_spread=spot_spread,
+                        futures_spread=futures_spread,
+                        now=now
+                    )
+                    self._record_touch_time(sd_level, direction)
+
+            # Check lower touch (LONG signal - zscore went below -sd_level)
+            if zscore <= -sd_level:
+                direction = 'LONG'
+                if self._can_record_touch(sd_level, direction):
+                    self._log_new_touch(
+                        asset=asset,
+                        sd_level=sd_level,
+                        direction=direction,
+                        spread=spread,
+                        zscore=zscore,
+                        mean=mean,
+                        std=std,
+                        spot_spread=spot_spread,
+                        futures_spread=futures_spread,
+                        now=now
+                    )
+                    self._record_touch_time(sd_level, direction)
+
+        # Update pending touches - check if they've reached mean
+        self._update_pending_touches(spread, zscore, mean, spot_spread, futures_spread, now)
+
+    def _log_new_touch(
+        self,
+        asset: str,
+        sd_level: float,
+        direction: str,
+        spread: float,
+        zscore: float,
+        mean: float,
+        std: float,
+        spot_spread: float,
+        futures_spread: float,
+        now: datetime
+    ):
+        """Log a new SD touch"""
+        touch = {
+            'asset': asset,
+            'touch_date': now.strftime('%Y-%m-%d'),
+            'touch_time': now.strftime('%H:%M:%S'),
+            'sd_level': sd_level,
+            'direction': direction,
+            'touch_spread': spread,
+            'touch_zscore': zscore,
+            'mean_at_touch': mean,
+            'std_at_touch': std,
+            'reached_mean': False,
+            'mean_reached_time': None,
+            'spread_at_mean': None,
+            'potential_profit': None,
+            'max_adverse_move': 0,
+            'status': 'PENDING',
+            'entry_spot_spread': spot_spread,
+            'entry_futures_spread': futures_spread,
+            'exit_spot_spread': 0,
+            'exit_futures_spread': 0
+        }
+
+        touch_id = self.db.save_sd_touch(touch)
+        touch['id'] = touch_id
+        self._pending_touches[touch_id] = touch
+
+        logger.info(f"SD Touch: {sd_level}σ {direction} at spread={spread:.2f}, zscore={zscore:.2f}")
+
+    def _update_pending_touches(
+        self,
+        spread: float,
+        zscore: float,
+        mean: float,
+        spot_spread: float,
+        futures_spread: float,
+        now: datetime
+    ):
+        """Update pending touches - check if spread returned to mean"""
+        # Reload pending from DB if cache is empty
+        if not self._pending_touches:
+            pending = self.db.get_pending_sd_touches()
+            for p in pending:
+                self._pending_touches[p['id']] = p
+
+        completed = []
+
+        for touch_id, touch in list(self._pending_touches.items()):
+            direction = touch['direction']
+            entry_spread = touch['touch_spread']
+
+            # Calculate adverse move (how far it went against us)
+            if direction == 'SHORT':
+                # For SHORT, adverse is when spread goes higher (more positive zscore)
+                adverse = max(0, spread - entry_spread)
+            else:
+                # For LONG, adverse is when spread goes lower (more negative zscore)
+                adverse = max(0, entry_spread - spread)
+
+            # Update max adverse if needed
+            if adverse > (touch.get('max_adverse_move') or 0):
+                touch['max_adverse_move'] = adverse
+                self.db.update_sd_touch(touch_id, {'max_adverse_move': adverse})
+
+            # Check if reached mean (zscore crossed zero in the right direction)
+            reached = False
+            if direction == 'SHORT' and zscore <= 0:
+                reached = True
+            elif direction == 'LONG' and zscore >= 0:
+                reached = True
+
+            if reached:
+                # Calculate profit
+                if direction == 'SHORT':
+                    # SHORT: sold at entry_spread, buy back at current spread
+                    # Profit = entry_spread - current_spread
+                    potential_profit = entry_spread - spread
+                else:
+                    # LONG: bought at entry_spread, sell at current spread
+                    # Profit = current_spread - entry_spread
+                    potential_profit = spread - entry_spread
+
+                updates = {
+                    'reached_mean': True,
+                    'mean_reached_time': now.strftime('%H:%M:%S'),
+                    'spread_at_mean': spread,
+                    'potential_profit': potential_profit,
+                    'status': 'REACHED_MEAN',
+                    'exit_spot_spread': spot_spread,
+                    'exit_futures_spread': futures_spread
+                }
+
+                self.db.update_sd_touch(touch_id, updates)
+                completed.append(touch_id)
+
+                logger.info(f"SD Touch {touch_id} reached mean: {touch['sd_level']}σ {direction}, profit={potential_profit:.2f}")
+
+        # Remove completed from pending cache
+        for touch_id in completed:
+            del self._pending_touches[touch_id]
+
+    def get_summary(self, days: int = 7) -> List[Dict]:
+        """Get summary statistics"""
+        return self.db.get_sd_touch_summary(days=days)
+
+    def get_daily(self, days: int = 7) -> List[Dict]:
+        """Get daily breakdown"""
+        return self.db.get_sd_touch_daily(days=days)
+
+    def get_recent(self, days: int = 7) -> List[Dict]:
+        """Get recent touches"""
+        return self.db.get_sd_touches(days=days)
+
+    def delete_by_ids(self, ids: List[int]):
+        """Delete touches by IDs"""
+        self.db.delete_sd_touches(ids)
+        for touch_id in ids:
+            if touch_id in self._pending_touches:
+                del self._pending_touches[touch_id]
+
+    def delete_by_level(self, sd_level: float, direction: str):
+        """Delete touches by SD level and direction"""
+        self.db.delete_sd_touches_by_level(sd_level, direction)
+        # Clear from cache
+        self._pending_touches = {
+            k: v for k, v in self._pending_touches.items()
+            if not (v['sd_level'] == sd_level and v['direction'] == direction)
+        }
 
 
 # ==================== TRADING MONITOR ====================
@@ -451,6 +1053,9 @@ class TradingMonitor:
 
         # Market data
         self.current_data = {}
+
+        # SD Touch Tracker
+        self.sd_tracker = SDTouchTracker(db)
 
         self._thread = None
         self._lock = threading.Lock()
@@ -651,6 +1256,21 @@ class TradingMonitor:
                             'exit_upper': exit_std,        # e.g., +0.2
                             'exit_lower': -exit_std        # e.g., -0.2
                         })
+
+                        # SD Touch Tracking
+                        try:
+                            self.sd_tracker.check_and_log_touches(
+                                asset=self.config.get('asset_name', 'BTC'),
+                                spread=spread,
+                                zscore=data['zscore'],
+                                mean=stats.get('mean', 0),
+                                std=stats.get('std', 1),
+                                contract_size=self.config.get('contract_size', 1),
+                                spot_bid_ask=(data.get('spot_bid', 0), data.get('spot_ask', 0)),
+                                futures_bid_ask=(data.get('futures_bid', 0), data.get('futures_ask', 0))
+                            )
+                        except Exception as e:
+                            logger.error(f"SD Touch tracking error: {e}")
 
                     # Save to database periodically
                     current_time = time.time()
@@ -2870,6 +3490,409 @@ def api_test_orders():
         results['message'] = 'Some tests failed. Check API permissions and account balance.'
 
     return jsonify(results)
+
+
+# ==================== SD TOUCH API ====================
+
+@app.route('/api/sd_touches')
+def get_sd_touches():
+    """Get SD touch data with different views"""
+    view = request.args.get('view', 'summary')
+    days = int(request.args.get('days', 7))
+
+    if view == 'summary':
+        data = monitor.sd_tracker.get_summary(days=days)
+    elif view == 'daily':
+        data = monitor.sd_tracker.get_daily(days=days)
+    elif view == 'recent':
+        data = monitor.sd_tracker.get_recent(days=days)
+    else:
+        data = []
+
+    return jsonify({
+        'success': True,
+        'view': view,
+        'days': days,
+        'data': data,
+        'is_paused': monitor.sd_tracker.is_paused()
+    })
+
+
+@app.route('/api/sd_touches/pause', methods=['POST'])
+def toggle_sd_pause():
+    """Toggle SD tracker pause state"""
+    new_state = monitor.sd_tracker.toggle_pause()
+    return jsonify({
+        'success': True,
+        'is_paused': new_state
+    })
+
+
+@app.route('/api/sd_touches/reset', methods=['POST'])
+def reset_sd_touches():
+    """Reset all SD touch records"""
+    monitor.sd_tracker.reset()
+    return jsonify({'success': True, 'message': 'All SD touch records cleared'})
+
+
+@app.route('/api/sd_touches/delete', methods=['POST'])
+def delete_sd_touches():
+    """Delete SD touches by IDs"""
+    data = request.json
+    ids = data.get('ids', [])
+
+    if ids:
+        monitor.sd_tracker.delete_by_ids(ids)
+        return jsonify({'success': True, 'deleted': len(ids)})
+
+    return jsonify({'success': False, 'error': 'No IDs provided'})
+
+
+@app.route('/api/sd_touches/delete_by_level', methods=['POST'])
+def delete_sd_touches_by_level():
+    """Delete SD touches by SD level and direction"""
+    data = request.json
+    sd_level = data.get('sd_level')
+    direction = data.get('direction')
+
+    if sd_level is not None and direction:
+        monitor.sd_tracker.delete_by_level(float(sd_level), direction)
+        return jsonify({'success': True, 'deleted_level': sd_level, 'deleted_direction': direction})
+
+    return jsonify({'success': False, 'error': 'sd_level and direction required'})
+
+
+@app.route('/sd_analysis')
+def sd_analysis_page():
+    """SD Analysis web page"""
+    return render_template_string(SD_ANALYSIS_HTML)
+
+
+SD_ANALYSIS_HTML = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SD Touch Analysis</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #1a1a2e; color: #eee; }
+        .card { background: #16213e; border: none; }
+        .table { color: #eee; }
+        .table-dark { background: #0f3460; }
+        .btn-pause { min-width: 120px; }
+        .status-active { color: #27ae60; }
+        .status-paused { color: #f39c12; }
+        .profitable { color: #27ae60; font-weight: bold; }
+        .unprofitable { color: #e74c3c; font-weight: bold; }
+        .nav-tabs .nav-link { color: #aaa; }
+        .nav-tabs .nav-link.active { background: #16213e; color: #fff; border-color: #0f3460; }
+        .checkbox-col { width: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2>SD Touch Analysis</h2>
+                <span id="status" class="status-active">● Tracking Active</span>
+            </div>
+            <div>
+                <a href="/" class="btn btn-outline-secondary me-2">← Back to Dashboard</a>
+                <button id="pauseBtn" class="btn btn-warning btn-pause me-2">Pause</button>
+                <button id="resetBtn" class="btn btn-danger">Reset All</button>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-auto">
+                <label class="form-label">Time Period:</label>
+                <select id="days" class="form-select form-select-sm" style="width: 150px;">
+                    <option value="1">Last 1 Day</option>
+                    <option value="7" selected>Last 7 Days</option>
+                    <option value="14">Last 14 Days</option>
+                    <option value="30">Last 30 Days</option>
+                </select>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#summary">Summary by SD Level</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#daily">Daily Breakdown</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recent">Recent Touches</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- Summary Tab -->
+            <div class="tab-pane fade show active" id="summary">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <h5>Summary by SD Level</h5>
+                            <button id="deleteSummaryBtn" class="btn btn-sm btn-outline-danger" disabled>Delete Selected</button>
+                        </div>
+                        <table class="table table-dark table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="checkbox-col"><input type="checkbox" id="selectAllSummary"></th>
+                                    <th>SD Level</th>
+                                    <th>Direction</th>
+                                    <th>Total Touches</th>
+                                    <th>Reached Mean</th>
+                                    <th>Pending</th>
+                                    <th>Success Rate</th>
+                                    <th>Avg Gross Profit</th>
+                                    <th>Avg Actual Cost</th>
+                                    <th>Avg Net Profit</th>
+                                    <th>Profitable?</th>
+                                </tr>
+                            </thead>
+                            <tbody id="summaryTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Daily Tab -->
+            <div class="tab-pane fade" id="daily">
+                <div class="card">
+                    <div class="card-body">
+                        <h5>Daily Breakdown</h5>
+                        <table class="table table-dark table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Total Touches</th>
+                                    <th>Reached Mean</th>
+                                    <th>Pending</th>
+                                    <th>Net Profit</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dailyTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Tab -->
+            <div class="tab-pane fade" id="recent">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <h5>Recent Touches</h5>
+                            <button id="deleteRecentBtn" class="btn btn-sm btn-outline-danger" disabled>Delete Selected</button>
+                        </div>
+                        <table class="table table-dark table-striped table-sm">
+                            <thead>
+                                <tr>
+                                    <th class="checkbox-col"><input type="checkbox" id="selectAllRecent"></th>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>SD</th>
+                                    <th>Dir</th>
+                                    <th>Entry Spread</th>
+                                    <th>Exit Spread</th>
+                                    <th>Gross Profit</th>
+                                    <th>Entry Cost</th>
+                                    <th>Exit Cost</th>
+                                    <th>Net Profit</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isPaused = false;
+
+        function loadData() {
+            const days = document.getElementById('days').value;
+
+            // Load all views
+            fetch(`/api/sd_touches?view=summary&days=${days}`)
+                .then(r => r.json())
+                .then(data => {
+                    isPaused = data.is_paused;
+                    updateStatus();
+                    renderSummary(data.data);
+                });
+
+            fetch(`/api/sd_touches?view=daily&days=${days}`)
+                .then(r => r.json())
+                .then(data => renderDaily(data.data));
+
+            fetch(`/api/sd_touches?view=recent&days=${days}`)
+                .then(r => r.json())
+                .then(data => renderRecent(data.data));
+        }
+
+        function updateStatus() {
+            const status = document.getElementById('status');
+            const btn = document.getElementById('pauseBtn');
+            if (isPaused) {
+                status.className = 'status-paused';
+                status.textContent = '● Tracking Paused';
+                btn.textContent = 'Resume';
+                btn.className = 'btn btn-success btn-pause me-2';
+            } else {
+                status.className = 'status-active';
+                status.textContent = '● Tracking Active';
+                btn.textContent = 'Pause';
+                btn.className = 'btn btn-warning btn-pause me-2';
+            }
+        }
+
+        function renderSummary(data) {
+            const tbody = document.getElementById('summaryTable');
+            tbody.innerHTML = data.map(r => `
+                <tr>
+                    <td><input type="checkbox" class="summary-check" data-level="${r.sd_level}" data-dir="${r.direction}"></td>
+                    <td>${r.sd_level}σ</td>
+                    <td>${r.direction}</td>
+                    <td>${r.total_touches}</td>
+                    <td>${r.reached_mean}</td>
+                    <td>${r.pending}</td>
+                    <td>${r.success_rate.toFixed(1)}%</td>
+                    <td>$${r.avg_gross_profit.toFixed(2)}</td>
+                    <td>$${r.avg_actual_cost.toFixed(2)}</td>
+                    <td class="${r.avg_net_profit >= 0 ? 'profitable' : 'unprofitable'}">$${r.avg_net_profit.toFixed(2)}</td>
+                    <td class="${r.profitable ? 'profitable' : 'unprofitable'}">${r.profitable ? 'YES' : 'NO'}</td>
+                </tr>
+            `).join('');
+            updateDeleteButtons();
+        }
+
+        function renderDaily(data) {
+            const tbody = document.getElementById('dailyTable');
+            tbody.innerHTML = data.map(r => {
+                const details = Object.entries(r.by_level || {}).map(([k, v]) => `${k}: ${v.reached}/${v.touches}`).join(', ');
+                return `
+                    <tr>
+                        <td>${r.date}</td>
+                        <td>${r.total_touches}</td>
+                        <td>${r.reached_mean}</td>
+                        <td>${r.pending}</td>
+                        <td class="${r.total_net_profit >= 0 ? 'profitable' : 'unprofitable'}">$${r.total_net_profit.toFixed(2)}</td>
+                        <td><small>${details}</small></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderRecent(data) {
+            const tbody = document.getElementById('recentTable');
+            tbody.innerHTML = data.map(r => {
+                const entryCost = (r.entry_spot_spread || 0) + (r.entry_futures_spread || 0);
+                const exitCost = (r.exit_spot_spread || 0) + (r.exit_futures_spread || 0);
+                const grossProfit = r.potential_profit || 0;
+                const netProfit = grossProfit - entryCost - exitCost;
+                return `
+                    <tr>
+                        <td><input type="checkbox" class="recent-check" data-id="${r.id}"></td>
+                        <td>${r.touch_date}</td>
+                        <td>${r.touch_time}</td>
+                        <td>${r.sd_level}σ</td>
+                        <td>${r.direction}</td>
+                        <td>$${r.touch_spread.toFixed(2)}</td>
+                        <td>${r.spread_at_mean ? '$' + r.spread_at_mean.toFixed(2) : '-'}</td>
+                        <td>$${grossProfit.toFixed(2)}</td>
+                        <td>$${entryCost.toFixed(4)}</td>
+                        <td>$${exitCost.toFixed(4)}</td>
+                        <td class="${netProfit >= 0 ? 'profitable' : 'unprofitable'}">$${netProfit.toFixed(2)}</td>
+                        <td>${r.status}</td>
+                    </tr>
+                `;
+            }).join('');
+            updateDeleteButtons();
+        }
+
+        function updateDeleteButtons() {
+            const summaryChecked = document.querySelectorAll('.summary-check:checked').length;
+            const recentChecked = document.querySelectorAll('.recent-check:checked').length;
+            document.getElementById('deleteSummaryBtn').disabled = summaryChecked === 0;
+            document.getElementById('deleteRecentBtn').disabled = recentChecked === 0;
+        }
+
+        // Event listeners
+        document.getElementById('days').addEventListener('change', loadData);
+
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            fetch('/api/sd_touches/pause', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    isPaused = data.is_paused;
+                    updateStatus();
+                });
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to delete ALL SD touch records?')) {
+                fetch('/api/sd_touches/reset', { method: 'POST' })
+                    .then(() => loadData());
+            }
+        });
+
+        document.getElementById('selectAllSummary').addEventListener('change', (e) => {
+            document.querySelectorAll('.summary-check').forEach(cb => cb.checked = e.target.checked);
+            updateDeleteButtons();
+        });
+
+        document.getElementById('selectAllRecent').addEventListener('change', (e) => {
+            document.querySelectorAll('.recent-check').forEach(cb => cb.checked = e.target.checked);
+            updateDeleteButtons();
+        });
+
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('summary-check') || e.target.classList.contains('recent-check')) {
+                updateDeleteButtons();
+            }
+        });
+
+        document.getElementById('deleteSummaryBtn').addEventListener('click', () => {
+            const selected = [...document.querySelectorAll('.summary-check:checked')];
+            if (selected.length && confirm(`Delete ${selected.length} SD level(s)?`)) {
+                const promises = selected.map(cb =>
+                    fetch('/api/sd_touches/delete_by_level', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sd_level: parseFloat(cb.dataset.level), direction: cb.dataset.dir })
+                    })
+                );
+                Promise.all(promises).then(() => loadData());
+            }
+        });
+
+        document.getElementById('deleteRecentBtn').addEventListener('click', () => {
+            const ids = [...document.querySelectorAll('.recent-check:checked')].map(cb => parseInt(cb.dataset.id));
+            if (ids.length && confirm(`Delete ${ids.length} touch record(s)?`)) {
+                fetch('/api/sd_touches/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                }).then(() => loadData());
+            }
+        });
+
+        // Initial load
+        loadData();
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
+'''
 
 
 # ==================== MAIN ====================
